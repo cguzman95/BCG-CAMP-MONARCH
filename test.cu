@@ -76,6 +76,35 @@ int nextPowerOfTwo(int v){
   return v;
 }
 
+__device__ void cudaDevicereduce(double *g_idata, double *g_odata, volatile double *sdata, int n_shr_empty)
+{
+  unsigned int tid = threadIdx.x;
+  unsigned int i = blockIdx.x*blockDim.x + threadIdx.x;
+
+  __syncthreads();
+
+  sdata[tid] = g_idata[i];
+
+  __syncthreads();
+  //first threads update empty positions
+  if(tid<n_shr_empty)
+    sdata[tid+blockDim.x]=0.;
+  __syncthreads();
+
+  for (unsigned int s=(blockDim.x+n_shr_empty)/2; s>0; s>>=1)
+  {
+    if (tid < s){
+      sdata[tid] += sdata[tid + s];
+    }
+    __syncthreads();
+  }
+
+  __syncthreads();
+  *g_odata = sdata[0];
+  __syncthreads();
+
+}
+
 __device__ void cudaDevicemaxD(double *g_idata, double *g_odata, volatile double *sdata, int n_shr_empty)
 {
   unsigned int tid = threadIdx.x;
@@ -110,13 +139,15 @@ void cudaIterative(double *x, double *y, int n_shr_empty)
 {
   extern __shared__ double sdata[];
   unsigned int i = blockIdx.x*blockDim.x + threadIdx.x;
-  x[i] = threadIdx.x;
 
   int it = 0;
   int maxIt = 100;
   double a = 0.0;
   while(it<maxIt){
 
+    y[i] = threadIdx.x;
+    cudaDevicereduce(y,&a,sdata,n_shr_empty);
+    x[i]=a;
     cudaDevicemaxD(x,&a,sdata,n_shr_empty);
 
     it++;
@@ -156,7 +187,10 @@ void iterative_test(){
 
   HANDLE_ERROR(cudaMemcpy( y, dy, len*sizeof(double), cudaMemcpyDeviceToHost ));
 
-  double cond = threads_block-1.;
+  double cond = 0;
+  for(int i=0; i<threads_block; i++){
+    cond+=i;
+  }
   for(int i=0; i<len; i++){
     //printf("y[i] %lf cond %lf i %d\n", y[i],cond,i);
     if (y[i] != cond ){

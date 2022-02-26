@@ -147,7 +147,7 @@ void cudaIterative(double *x, double *y, int n_shr_empty)
 
     y[i] = threadIdx.x;
     cudaDevicereduce(y,&a,sdata,n_shr_empty);
-    x[i]=a;
+    if(threadIdx.x==0) x[i]=a;
     cudaDevicemaxD(x,&a,sdata,n_shr_empty);
 
     it++;

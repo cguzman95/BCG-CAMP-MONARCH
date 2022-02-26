@@ -76,36 +76,6 @@ int nextPowerOfTwo(int v){
   return v;
 }
 
-
-__global__
-void cudaReduce(double *g_idata1, double *g_odata, int n_shr_empty)
-{
-  unsigned int tid = threadIdx.x;
-  //unsigned int i = blockIdx.x*(blockDim.x*2) + threadIdx.x;
-  unsigned int i = blockIdx.x*blockDim.x + threadIdx.x;
-
-  __syncthreads();
-
-  //first threads update empty positions
-  if(tid<n_shr_empty)
-    sdata[tid+blockDim.x]=0.;
-
-  __syncthreads();
-  sdata[tid] = g_idata1[i];
-  __syncthreads();
-
-  for (unsigned int s=(blockDim.x+n_shr_empty)/2; s>0; s>>=1)
-  {
-    if (tid < s)
-      sdata[tid] += sdata[tid + s];
-    __syncthreads();
-  }
-
-  *g_odata = sdata[0];
-  __syncthreads();
-
-}
-
 __device__ void cudaDevicemaxD(double *g_idata, double *g_odata, volatile double *sdata, int n_shr_empty)
 {
   unsigned int tid = threadIdx.x;
@@ -139,26 +109,36 @@ __global__
 void cudaIterative(double *x, double *y, int n_shr_empty)
 {
   extern __shared__ double sdata[];
-  x[threadIdx.x] = blockIdx.x; //Each block is different
+  unsigned int i = blockIdx.x*blockDim.x + threadIdx.x;
+  x[i] = threadIdx.x;
 
   int it = 0;
   int maxIt = 100;
   double a = 0.0;
   while(it<maxIt){
 
-    //cudaReduce(x,&a,n_shr_empty);
     cudaDevicemaxD(x,&a,sdata,n_shr_empty);
 
     it++;
   }
 
-  y[threadIdx.x] = a;
+  __syncthreads();
+
+  //if (i==0) printf("a %lf\n",a);
+  y[i] = a;
+  __syncthreads();
+  //printf("y[i] %lf i %d\n",y[i],i);
 
 }
 
 void iterative_test(){
 
-  int len = 10000;
+  int blocks = 100;
+  int threads_block = 73;
+  int n_shr_memory = nextPowerOfTwo(threads_block);
+  int n_shr_empty = n_shr_memory-threads_block;
+  int len = blocks*threads_block;
+
   double *x = (double *) malloc(len * sizeof(double));
   memset(x, 0, len * sizeof(double));
   double *y = (double *) malloc(len * sizeof(double));
@@ -171,28 +151,27 @@ void iterative_test(){
   HANDLE_ERROR(cudaMemcpy(dx, x, len*sizeof(double), cudaMemcpyHostToDevice));
   HANDLE_ERROR(cudaMemcpy(dy, y, len*sizeof(double), cudaMemcpyHostToDevice));
 
-  int blocks = 100;
-  int threads_block = 73;
-  int n_shr_memory = nextPowerOfTwo(threads_block);
-  int n_shr_empty = n_shr_memory-threads_block;
-  cudaGlobalCVode <<<blocks,threads_block,n_shr_memory*sizeof(double)>>>
+  cudaIterative <<<blocks,threads_block,n_shr_memory*sizeof(double)>>>
                                           (dx,dy,n_shr_empty);
 
-  HANDLE_ERROR(cudaMemcpy( y, dy, len, cudaMemcpyDeviceToHost ));
+  HANDLE_ERROR(cudaMemcpy( y, dy, len*sizeof(double), cudaMemcpyDeviceToHost ));
 
+  double cond = threads_block-1.;
   for(int i=0; i<len; i++){
-    if (y[i] != blocks ){
-     printf("ERROR: Wrong result, y array should be equal to number of blocks");
+    //printf("y[i] %lf cond %lf i %d\n", y[i],cond,i);
+    if (y[i] != cond ){
+     printf("ERROR: Wrong result\n");
+     printf("y[i] %lf cond %lf i %d\n", y[i],cond,i);
      exit(0);
     }
   }
 
-  printf(" iterative_test SUCCESS");
+  printf(" iterative_test SUCCESS\n");
 }
 
 int main()
 {
-  hello_test();
+  //hello_test();
   iterative_test();
 
 	return 0;

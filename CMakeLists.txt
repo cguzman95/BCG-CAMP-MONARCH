@@ -1,11 +1,22 @@
-cmake_minimum_required(VERSION 2.6.4)
+cmake_minimum_required(VERSION 3.10)
 
 project(MultiGPUOpenMPCAMP)
 
 enable_language(CUDA)
+enable_language(CXX)
 
-add_executable(test test.cu)
+#SET(CMAKE_C_FLAGS "-fopenacc -ta=tesla -Minfo=accel")
 
-set(STD_CUDA_FLAGS "-lineinfo -arch=compute_70 -code=sm_70")
+#find_package(OpenACC REQUIRED)
 
-set_target_properties(test PROPERTIES COMPILE_FLAGS ${STD_CUDA_FLAGS})
+#FindOpenACC()
+
+set(OpenACC_FLAGS "-acc -ta=nvidia -Minfo=accel") #-ta=tesla
+add_executable(test test.cpp)
+#set_target_properties(test PROPERTIES COMPILE_FLAGS ${OpenACC_FLAGS})
+
+#target_compile_options(test PRIVATE ${OpenACC_C_OPTIONS})
+
+#add_executable(test test.cu)
+#set(STD_CUDA_FLAGS "-lineinfo -arch=compute_70 -code=sm_70")
+#set_target_properties(test PROPERTIES COMPILE_FLAGS ${STD_CUDA_FLAGS})

@@ -34,17 +34,18 @@ int compare_doubles(double *x, double *y, int len, const char *s){
   int flag=1;
   double tol=0.01;
   //float tol=0.0001;
-  double rel_error;
+  double rel_error, abs_error;
   int n_fails=0;
   for (int i=0; i<len; i++){
+    abs_error=abs(x[i]-y[i]);
     if(x[i]==0)
       rel_error=0.;
     else
       rel_error=abs((x[i]-y[i])/x[i]);
-    //rel_error=(x[i]-y[i]/(x[i]+1.0E-60));
-    if(rel_error>tol){
-      printf("compare_doubles %s rel_error %le for tol %le at [%d]: %le vs %le\n",
-             s,rel_error,tol,i,x[i],y[i]);
+    if((rel_error>tol && abs_error > 1.0E-30) || y[i]!=y[i]){
+    //if(true){
+      printf("compare_doubles %s rel_error %le abs_error %le for tol %le at [%d]: %le vs %le\n",
+             s,rel_error,abs_error,tol,i,x[i],y[i]);
       flag=0;
       n_fails++;
       if(n_fails==4)
@@ -184,10 +185,10 @@ void cudaIterative(double *x, double *y, int n_shr_empty)
 
   __syncthreads();
 
-  //if (i==0) printf("a %lf\n",a);
+  //if (i==0) printf("a %le\n",a);
   y[i] = a;
   __syncthreads();
-  //printf("y[i] %lf i %d\n",y[i],i);
+  //printf("y[i] %le i %d\n",y[i],i);
 
 }
 
@@ -221,15 +222,26 @@ void iterative_test(){
     cond+=i;
   }
   for(int i=0; i<len; i++){
-    //printf("y[i] %lf cond %lf i %d\n", y[i],cond,i);
+    //printf("y[i] %le cond %le i %d\n", y[i],cond,i);
     if (y[i] != cond ){
      printf("ERROR: Wrong result\n");
-     printf("y[i] %lf cond %lf i %d\n", y[i],cond,i);
+     printf("y[i] %le cond %le i %d\n", y[i],cond,i);
      exit(0);
     }
   }
 
   printf(" iterative_test SUCCESS\n");
+}
+
+__device__
+void dvcheck_input_gpud(double *x, int len, const char* s)
+{
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  //if(i<2)
+  if(i<len)
+  {
+    printf("%s[%d]=%-le\n",s,i,x[i]);
+  }
 }
 
 //Algorithm: Biconjugate gradient
@@ -415,12 +427,12 @@ void solveBcgCuda(
 
 #ifdef DEBUG_SOLVEBCGCUDA_DEEP
 
-            if(i>=0){
+        //if(i>=0){
         //printf("%d ddiag[%d] %-le\n",it,i,ddiag[i]);
         //printf("%d dt[%d] %-le\n",it,i,dt[i]);
         //printf("%d dAx2[%d] %-le\n",it,i,dAx2[i]);
         //printf("%d dz[%d] %-le\n",it,i,dz[i]);
-      }
+      //}
 
       if(i==0){
         printf("%d %d temp1 %-le\n",it,i,temp1);
@@ -434,7 +446,7 @@ void solveBcgCuda(
 
 #ifdef DEBUG_SOLVEBCGCUDA_DEEP
 
-            if(i==0){
+      if(i==0){
         printf("%d %d temp2 %-le\n",it,i,temp2);
       }
 
@@ -468,19 +480,19 @@ void solveBcgCuda(
 
             //if (tid==0) it++;
             it++;
-        } while(it<maxIt+*it_pointer && temp1>tolmax);//while(it<maxIt && temp1>tolmax);//while(0);
+        } while(it<maxIt+*it_pointer && temp1>tolmax);//while(it<maxIt && temp1>tolmax);
 
 #ifdef DEBUG_SOLVEBCGCUDA_DEEP
-        if(tid==0)
+        if(i==0)
       printf("%d %d %-le %-le\n",tid,it,temp1,tolmax);
 #endif
 
         //if(it>=maxIt-1)
         //  dvcheck_input_gpud(dr0,nrows,999);
         //dvcheck_input_gpud(dr0,nrows,k++);
+/*
 
 #ifdef CAMP_DEBUG_GPU
-
     if(tid==0) {
       if(last_blockN==1){
         if(*it_pointer-it>*it_pointer)*it_pointer = it;
@@ -490,8 +502,8 @@ void solveBcgCuda(
       }
     //printf("it_pointer %d\n",*it_pointer);
     }
-
 #endif
+*/
 
     }
 
@@ -539,7 +551,6 @@ void solveGPU_block_thr(int blocks, int threads_block, int n_shr_memory, int n_s
 #endif
 
     int it = 0;
-
     solveBcgCuda << < blocks, threads_block, n_shr_memory * sizeof(double) >> >
     //solveBcgCuda << < blocks, threads_block, threads_block * sizeof(double) >> >
     (dA, djA, diA, dx, dtempv, nrows, blocks, n_shr_empty, maxIt, mattype, n_cells,
@@ -627,27 +638,18 @@ void BCG (){
   int device=0;
 
   FILE *fp;
-  char buff[2048];
-
   fp = fopen("confBCG.txt", "r");
   if (fp == NULL) {
     printf("File not found \n");
     exit(EXIT_FAILURE);
   }
 
-  fscanf(fp, "%s", buff);
-  //printf("1 : %s\n", buff );
-  mGPU->n_cells = atoi(buff);
-  fscanf(fp, "%s", buff);
-  mGPU->nrows = atoi(buff);
-  fscanf(fp, "%s", buff);
-  mGPU->nnz=atoi(buff);
-  fscanf(fp, "%s", buff);
-  mGPU->maxIt=atoi(buff);
-  fscanf(fp, "%s", buff);
-  mGPU->mattype=atoi(buff);
-  fscanf(fp, "%s", buff);
-  mGPU->tolmax=atof(buff);
+  fscanf(fp, "%d", &mGPU->n_cells);
+  fscanf(fp, "%d", &mGPU->nrows);
+  fscanf(fp, "%d", &mGPU->nnz);
+  fscanf(fp, "%d", &mGPU->maxIt);
+  fscanf(fp, "%d", &mGPU->mattype);
+  fscanf(fp, "%le", &mGPU->tolmax);
 
   int *jA=(int*)malloc(mGPU->nnz*sizeof(int));
   int *iA=(int*)malloc((mGPU->nrows+1)*sizeof(int));
@@ -656,55 +658,35 @@ void BCG (){
   double *x=(double*)malloc(mGPU->nrows*sizeof(double));
   double *tempv=(double*)malloc(mGPU->nrows*sizeof(double));
 
-  int i;
-  i=0;
   for(int i=0; i<mGPU->nnz; i++){
     fscanf(fp, "%d", &jA[i]);
-  }
-  /*
-  while (fscanf(fp, "%d", &jA[i]) != EOF) {
-    //printf("> %s\n", buff);
-    printf("%d %d\n",i, jA[i]);
-    //jA[i] = atoi(buff);
-    i++;
-  }
-*/
-  printf("SUCCESS\n");
-  exit(0);
-
-  i=0;
-  while (fscanf(fp, "%[^\n ] ", buff) != EOF) {
-    //printf("> %s\n", buff);
-    iA[i] = atoi(buff);
-    i++;
-  }
-  i=0;
-  while (fscanf(fp, "%[^\n ] ", buff) != EOF) {
-    //printf("> %s\n", buff);
-    A[i] = atof(buff);
-    i++;
-  }
-  i=0;
-  while (fscanf(fp, "%[^\n ] ", buff) != EOF) {
-    //printf("> %s\n", buff);
-    diag[i] = atof(buff);
-    i++;
-  }
-  i=0;
-  while (fscanf(fp, "%[^\n ] ", buff) != EOF) {
-    //printf("> %s\n", buff);
-    x[i] = atof(buff);
-    i++;
-  }
-  i=0;
-  while (fscanf(fp, "%[^\n ] ", buff) != EOF) {
-    //printf("> %s\n", buff);
-    tempv[i] = atof(buff);
-    i++;
+    //printf("%d %d\n",i, jA[i]);
   }
 
-  printf("SUCCESS\n");
+  for(int i=0; i<mGPU->nrows+1; i++){
+    fscanf(fp, "%d", &iA[i]);
+    //printf("%d %d\n",i, iA[i]);
+  }
 
+  for(int i=0; i<mGPU->nnz; i++){
+    fscanf(fp, "%le", &A[i]);
+    //printf("%d %le\n",i, A[i]);
+  }
+
+  for(int i=0; i<mGPU->nrows; i++){
+    fscanf(fp, "%le", &diag[i]);
+    //printf("%d %le\n",i, diag[i]);
+  }
+
+  for(int i=0; i<mGPU->nrows; i++){
+    fscanf(fp, "%le", &x[i]);
+    //printf("%d %le\n",i, x[i]);
+  }
+
+  for(int i=0; i<mGPU->nrows; i++){
+    fscanf(fp, "%le", &tempv[i]);
+    //printf("%d %le\n",i, tempv[i]);
+  }
 
   fclose(fp);
 
@@ -715,14 +697,12 @@ void BCG (){
   cudaMalloc((void**)&mGPU->dx,mGPU->nrows*sizeof(double));
   cudaMalloc((void**)&mGPU->dtempv,mGPU->nrows*sizeof(double));
 
-  printf("SUCCESS\n");
-
   cudaMemcpy(mGPU->djA,jA,mGPU->nnz*sizeof(int),cudaMemcpyHostToDevice);
   cudaMemcpy(mGPU->diA,iA,(mGPU->nrows+1)*sizeof(int),cudaMemcpyHostToDevice);
   cudaMemcpy(mGPU->dA,A,mGPU->nnz*sizeof(double),cudaMemcpyHostToDevice);
-  cudaMemcpy(mGPU->ddiag,A,mGPU->nrows*sizeof(double),cudaMemcpyHostToDevice);
+  cudaMemcpy(mGPU->ddiag,diag,mGPU->nrows*sizeof(double),cudaMemcpyHostToDevice);
   cudaMemcpy(mGPU->dx,x,mGPU->nrows*sizeof(double),cudaMemcpyHostToDevice);
-  cudaMemcpy(mGPU->dx,tempv,mGPU->nrows*sizeof(double),cudaMemcpyHostToDevice);
+  cudaMemcpy(mGPU->dtempv,tempv,mGPU->nrows*sizeof(double),cudaMemcpyHostToDevice);
 
   //Auxiliary vectors ("private")
   double ** dr0 = &mGPU->dr0;
@@ -748,8 +728,6 @@ void BCG (){
   cudaMalloc(dz,nrows*sizeof(double));
   cudaMalloc(daux,nrows*sizeof(double));
 
-
-
   cudaDeviceProp prop;
   cudaGetDeviceProperties(&prop, device);
   mGPU->threads=prop.maxThreadsPerBlock;
@@ -769,34 +747,33 @@ void BCG (){
   double *tempv2=(double*)malloc(mGPU->nrows*sizeof(double));
 
   fp = fopen("outBCG.txt", "r");
-  i=0;
-  while (fscanf(fp, "%[^\n ] ", buff) != EOF) {
-    //printf("> %s\n", buff);
-    A[i] = atof(buff);
-    i++;
+
+  for(int i=0; i<mGPU->nnz; i++){
+    fscanf(fp, "%le", &A2[i]);
+    //printf("%d %le\n",i, A[i]);
   }
-  i=0;
-  while (fscanf(fp, "%[^\n ] ", buff) != EOF) {
-    //printf("> %s\n", buff);
-    x2[i] = atof(buff);
-    i++;
+
+  for(int i=0; i<mGPU->nrows; i++){
+    fscanf(fp, "%le", &x2[i]);
+    //printf("%d %le\n",i, x[i]);
   }
-  i=0;
-  while (fscanf(fp, "%[^\n ] ", buff) != EOF) {
-    //printf("> %s\n", buff);
-    tempv2[i] = atof(buff);
-    i++;
+
+  for(int i=0; i<mGPU->nrows; i++){
+    fscanf(fp, "%le", &tempv2[i]);
+    //printf("%d %le\n",i, tempv[i]);
   }
+
   fclose(fp);
 
-  compare_doubles(A2,A,mGPU->nnz,"A2");
-  compare_doubles(x2,x,mGPU->nrows,"x2");
-  compare_doubles(tempv2,tempv,mGPU->nrows,"tempv2");
+  int flag=1;
+  if(compare_doubles(A2,A,mGPU->nnz,"A2")==0) flag=0;
+  if(compare_doubles(x2,x,mGPU->nrows,"x2")==0)  flag=0;
+  if(compare_doubles(tempv2,tempv,mGPU->nrows,"tempv2")==0)  flag=0;
 
-  printf("SUCCESS\n");
-
-  //for(int i=0; i<mGPU->nnz; i++)
-  //  printf("mGPU->dtempv %lf \n", mGPU->dA);
+  if(flag==0)
+    printf("FAIL\n");
+  else
+    printf("SUCCESS\n");
 
 }
 

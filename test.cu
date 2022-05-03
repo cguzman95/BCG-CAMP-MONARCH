@@ -748,12 +748,12 @@ void BCG (){
     cudaMalloc((void **) &mGPU->dx, mGPU->nrows * sizeof(double));
     cudaMalloc((void **) &mGPU->dtempv, mGPU->nrows * sizeof(double));
 
-    cudaMemcpy(mGPU->djA, jA, mGPU->nnz * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(mGPU->diA, iA, (mGPU->nrows + 1) * sizeof(int), cudaMemcpyHostToDevice);
-    cudaMemcpy(mGPU->dA, A+offset_nnz, mGPU->nnz * sizeof(double), cudaMemcpyHostToDevice);
-    cudaMemcpy(mGPU->ddiag, diag+offset_nrows, mGPU->nrows * sizeof(double), cudaMemcpyHostToDevice);
-    cudaMemcpy(mGPU->dx, x+offset_nrows, mGPU->nrows * sizeof(double), cudaMemcpyHostToDevice);
-    HANDLE_ERROR(cudaMemcpy(mGPU->dtempv, tempv+offset_nrows, mGPU->nrows * sizeof(double), cudaMemcpyHostToDevice));
+    cudaMemcpyAsync(mGPU->djA, jA, mGPU->nnz * sizeof(int), cudaMemcpyHostToDevice, 0);
+    cudaMemcpyAsync(mGPU->diA, iA, (mGPU->nrows + 1) * sizeof(int), cudaMemcpyHostToDevice, 0);
+    cudaMemcpyAsync(mGPU->dA, A+offset_nnz, mGPU->nnz * sizeof(double), cudaMemcpyHostToDevice);
+    cudaMemcpyAsync(mGPU->ddiag, diag+offset_nrows, mGPU->nrows * sizeof(double), cudaMemcpyHostToDevice, 0);
+    cudaMemcpyAsync(mGPU->dx, x+offset_nrows, mGPU->nrows * sizeof(double), cudaMemcpyHostToDevice, 0);
+    HANDLE_ERROR(cudaMemcpyAsync(mGPU->dtempv, tempv+offset_nrows, mGPU->nrows * sizeof(double), cudaMemcpyHostToDevice, 0));
 
     //Auxiliary vectors ("private")
     double **dr0 = &mGPU->dr0;
@@ -786,12 +786,12 @@ void BCG (){
 
     solveGPU_block(mGPU);
 
-    HANDLE_ERROR(cudaMemcpy(jA, mGPU->djA, mGPU->nnz * sizeof(int), cudaMemcpyDeviceToHost));
-    cudaMemcpy(iA, mGPU->diA, (mGPU->nrows + 1) * sizeof(int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(A+offset_nnz, mGPU->dA, mGPU->nnz * sizeof(double), cudaMemcpyDeviceToHost);
-    cudaMemcpy(diag+offset_nrows, mGPU->ddiag, mGPU->nrows * sizeof(double), cudaMemcpyDeviceToHost);
-    cudaMemcpy(x+offset_nrows, mGPU->dx, mGPU->nrows * sizeof(double), cudaMemcpyDeviceToHost);
-    cudaMemcpy(tempv+offset_nrows, mGPU->dtempv, mGPU->nrows * sizeof(double), cudaMemcpyDeviceToHost);
+    HANDLE_ERROR(cudaMemcpyAsync(jA, mGPU->djA, mGPU->nnz * sizeof(int), cudaMemcpyDeviceToHost, 0));
+    cudaMemcpyAsync(iA, mGPU->diA, (mGPU->nrows + 1) * sizeof(int), cudaMemcpyDeviceToHost, 0);
+    cudaMemcpyAsync(A+offset_nnz, mGPU->dA, mGPU->nnz * sizeof(double), cudaMemcpyDeviceToHost, 0);
+    cudaMemcpyAsync(diag+offset_nrows, mGPU->ddiag, mGPU->nrows * sizeof(double), cudaMemcpyDeviceToHost, 0);
+    cudaMemcpyAsync(x+offset_nrows, mGPU->dx, mGPU->nrows * sizeof(double), cudaMemcpyDeviceToHost, 0);
+    cudaMemcpyAsync(tempv+offset_nrows, mGPU->dtempv, mGPU->nrows * sizeof(double), cudaMemcpyDeviceToHost, 0);
 
     offset_nnz += mGPU->nnz;
     offset_nrows += mGPU->nrows;

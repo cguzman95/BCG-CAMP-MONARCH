@@ -633,9 +633,15 @@ void solveGPU_block(ModelDataGPU *mGPU)
 
 void BCG (){
 
-  ModelDataGPU mGPU_object;
-  ModelDataGPU *mGPU = &mGPU_object;
+  //ModelDataGPU mGPU_object;
+  //ModelDataGPU *mGPU = &mGPU_object;
   int device=0;
+  int nDevices = 4;
+
+  ModelDataGPU *mGPUs = (ModelDataGPU *)malloc(nDevices * sizeof(ModelDataGPU));
+  ModelDataGPU *mGPU = &mGPUs[0];
+  ModelDataGPU mGPU0_object;
+  ModelDataGPU *mGPU0 = &mGPU0_object;
 
   FILE *fp;
   fp = fopen("confBCG.txt", "r");
@@ -644,12 +650,40 @@ void BCG (){
     exit(EXIT_FAILURE);
   }
 
-  fscanf(fp, "%d", &mGPU->n_cells);
-  fscanf(fp, "%d", &mGPU->nrows);
-  fscanf(fp, "%d", &mGPU->nnz);
-  fscanf(fp, "%d", &mGPU->maxIt);
-  fscanf(fp, "%d", &mGPU->mattype);
-  fscanf(fp, "%le", &mGPU->tolmax);
+  fscanf(fp, "%d", &mGPU0->n_cells);
+  fscanf(fp, "%d", &mGPU0->nrows);
+  fscanf(fp, "%d", &mGPU0->nnz);
+  fscanf(fp, "%d", &mGPU0->maxIt);
+  fscanf(fp, "%d", &mGPU0->mattype);
+  fscanf(fp, "%le", &mGPU0->tolmax);
+
+  int remainder = mGPU0->n_cells % nDevices;
+  for (int iDevice = 0; iDevice < nDevices; iDevice++) {
+    cudaSetDevice(iDevice);
+    mGPU = &mGPUs[iDevice];
+
+    int n_cells = int(mGPU0->n_cells / nDevices);
+    if (remainder!=0 && iDevice==0){
+      //printf("REMAINDER  nDevicesMODn_cells!=0\n");
+      //printf("remainder %d n_cells_total %d nDevices %d n_cells %d\n",remainder,mGPU0->n_cells,nDevices,n_cells);
+      n_cells+=remainder;
+    }
+
+    mGPU->n_cells=n_cells;
+    mGPU->nrows=mGPU0->nrows/mGPU0->n_cells*mGPU->n_cells;
+    mGPU->nnz=mGPU0->nnz/mGPU0->n_cells*mGPU->n_cells;
+    mGPU->maxIt=mGPU0->maxIt;
+    mGPU->mattype=mGPU0->mattype;
+    mGPU->tolmax=mGPU0->tolmax;
+
+    //printf("mGPU->nrows %d mGPU0->nrows %d mGPU0->n_cells %d mGPU->n_cells %d",
+          // mGPU->nrows,mGPU0->nrows,mGPU0->n_cells,mGPU->n_cells);
+
+  }
+  mGPU = mGPU0;
+
+  //ModelDataGPU *mGPU2 = &mGPUs[0];
+  //printf("mGPU->nnz %d mGPUs[0]->nnz %d\n",mGPU->nnz,mGPU2->nnz);
 
   int *jA=(int*)malloc(mGPU->nnz*sizeof(int));
   int *iA=(int*)malloc((mGPU->nrows+1)*sizeof(int));
@@ -690,57 +724,79 @@ void BCG (){
 
   fclose(fp);
 
-  cudaMalloc((void**)&mGPU->djA,mGPU->nnz*sizeof(int));
-  cudaMalloc((void**)&mGPU->diA,(mGPU->nrows+1)*sizeof(int));
-  cudaMalloc((void**)&mGPU->dA,mGPU->nnz*sizeof(double));
-  cudaMalloc((void**)&mGPU->ddiag,mGPU->nrows*sizeof(double));
-  cudaMalloc((void**)&mGPU->dx,mGPU->nrows*sizeof(double));
-  cudaMalloc((void**)&mGPU->dtempv,mGPU->nrows*sizeof(double));
+  /*
+  for(int icell=0; icell<mGPU->n_cells; icell++){
+    printf("cell %d:\n",icell);
+    for(int i=0; i<mGPU->nrows/mGPU0->n_cells+1; i++){
+      printf("%d ", iA[i+icell*(mGPU->nrows/mGPU0->n_cells)]);
+      //printf("%d %d\n",i, iA[i]);
+    }
+    printf("\n");
+  }
+*/
 
-  cudaMemcpy(mGPU->djA,jA,mGPU->nnz*sizeof(int),cudaMemcpyHostToDevice);
-  cudaMemcpy(mGPU->diA,iA,(mGPU->nrows+1)*sizeof(int),cudaMemcpyHostToDevice);
-  cudaMemcpy(mGPU->dA,A,mGPU->nnz*sizeof(double),cudaMemcpyHostToDevice);
-  cudaMemcpy(mGPU->ddiag,diag,mGPU->nrows*sizeof(double),cudaMemcpyHostToDevice);
-  cudaMemcpy(mGPU->dx,x,mGPU->nrows*sizeof(double),cudaMemcpyHostToDevice);
-  cudaMemcpy(mGPU->dtempv,tempv,mGPU->nrows*sizeof(double),cudaMemcpyHostToDevice);
+  int offset_nnz = 0;
+  int offset_nrows = 0;
+  for (int iDevice = 0; iDevice < nDevices; iDevice++) {
+    cudaSetDevice(iDevice);
+    mGPU = &mGPUs[iDevice];
 
-  //Auxiliary vectors ("private")
-  double ** dr0 = &mGPU->dr0;
-  double ** dr0h = &mGPU->dr0h;
-  double ** dn0 = &mGPU->dn0;
-  double ** dp0 = &mGPU->dp0;
-  double ** dt = &mGPU->dt;
-  double ** ds = &mGPU->ds;
-  double ** dAx2 = &mGPU->dAx2;
-  double ** dy = &mGPU->dy;
-  double ** dz = &mGPU->dz;
-  double ** daux = &mGPU->daux;
+    cudaMalloc((void **) &mGPU->djA, mGPU->nnz * sizeof(int));
+    cudaMalloc((void **) &mGPU->diA, (mGPU->nrows + 1) * sizeof(int));
+    cudaMalloc((void **) &mGPU->dA, mGPU->nnz * sizeof(double));
+    cudaMalloc((void **) &mGPU->ddiag, mGPU->nrows * sizeof(double));
+    cudaMalloc((void **) &mGPU->dx, mGPU->nrows * sizeof(double));
+    cudaMalloc((void **) &mGPU->dtempv, mGPU->nrows * sizeof(double));
 
-  int nrows=mGPU->nrows;
-  cudaMalloc(dr0,nrows*sizeof(double));
-  cudaMalloc(dr0h,nrows*sizeof(double));
-  cudaMalloc(dn0,nrows*sizeof(double));
-  cudaMalloc(dp0,nrows*sizeof(double));
-  cudaMalloc(dt,nrows*sizeof(double));
-  cudaMalloc(ds,nrows*sizeof(double));
-  cudaMalloc(dAx2,nrows*sizeof(double));
-  cudaMalloc(dy,nrows*sizeof(double));
-  cudaMalloc(dz,nrows*sizeof(double));
-  cudaMalloc(daux,nrows*sizeof(double));
+    cudaMemcpy(mGPU->djA, jA, mGPU->nnz * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(mGPU->diA, iA, (mGPU->nrows + 1) * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(mGPU->dA, A+offset_nnz, mGPU->nnz * sizeof(double), cudaMemcpyHostToDevice);
+    cudaMemcpy(mGPU->ddiag, diag+offset_nrows, mGPU->nrows * sizeof(double), cudaMemcpyHostToDevice);
+    cudaMemcpy(mGPU->dx, x+offset_nrows, mGPU->nrows * sizeof(double), cudaMemcpyHostToDevice);
+    HANDLE_ERROR(cudaMemcpy(mGPU->dtempv, tempv+offset_nrows, mGPU->nrows * sizeof(double), cudaMemcpyHostToDevice));
 
-  cudaDeviceProp prop;
-  cudaGetDeviceProperties(&prop, device);
-  mGPU->threads=prop.maxThreadsPerBlock;
-  mGPU->blocks=(mGPU->nrows+mGPU->threads-1)/mGPU->threads;
+    //Auxiliary vectors ("private")
+    double **dr0 = &mGPU->dr0;
+    double **dr0h = &mGPU->dr0h;
+    double **dn0 = &mGPU->dn0;
+    double **dp0 = &mGPU->dp0;
+    double **dt = &mGPU->dt;
+    double **ds = &mGPU->ds;
+    double **dAx2 = &mGPU->dAx2;
+    double **dy = &mGPU->dy;
+    double **dz = &mGPU->dz;
+    double **daux = &mGPU->daux;
 
-  solveGPU_block(mGPU);
+    int nrows = mGPU->nrows;
+    cudaMalloc(dr0, nrows * sizeof(double));
+    cudaMalloc(dr0h, nrows * sizeof(double));
+    cudaMalloc(dn0, nrows * sizeof(double));
+    cudaMalloc(dp0, nrows * sizeof(double));
+    cudaMalloc(dt, nrows * sizeof(double));
+    cudaMalloc(ds, nrows * sizeof(double));
+    cudaMalloc(dAx2, nrows * sizeof(double));
+    cudaMalloc(dy, nrows * sizeof(double));
+    cudaMalloc(dz, nrows * sizeof(double));
+    cudaMalloc(daux, nrows * sizeof(double));
 
-  cudaMemcpy(jA, mGPU->djA,mGPU->nnz*sizeof(int),cudaMemcpyDeviceToHost);
-  cudaMemcpy(iA, mGPU->diA,(mGPU->nrows+1)*sizeof(int),cudaMemcpyDeviceToHost);
-  cudaMemcpy(A, mGPU->dA,mGPU->nnz*sizeof(double),cudaMemcpyDeviceToHost);
-  cudaMemcpy(diag,mGPU->ddiag,mGPU->nrows*sizeof(double),cudaMemcpyDeviceToHost);
-  cudaMemcpy(x,mGPU->dx,mGPU->nrows*sizeof(double),cudaMemcpyDeviceToHost);
-  cudaMemcpy(tempv,mGPU->dtempv,mGPU->nrows*sizeof(double),cudaMemcpyDeviceToHost);
+    cudaDeviceProp prop;
+    cudaGetDeviceProperties(&prop, device);
+    mGPU->threads = prop.maxThreadsPerBlock;
+    mGPU->blocks = (mGPU->nrows + mGPU->threads - 1) / mGPU->threads;
+
+    solveGPU_block(mGPU);
+
+    HANDLE_ERROR(cudaMemcpy(jA, mGPU->djA, mGPU->nnz * sizeof(int), cudaMemcpyDeviceToHost));
+    cudaMemcpy(iA, mGPU->diA, (mGPU->nrows + 1) * sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(A+offset_nnz, mGPU->dA, mGPU->nnz * sizeof(double), cudaMemcpyDeviceToHost);
+    cudaMemcpy(diag+offset_nrows, mGPU->ddiag, mGPU->nrows * sizeof(double), cudaMemcpyDeviceToHost);
+    cudaMemcpy(x+offset_nrows, mGPU->dx, mGPU->nrows * sizeof(double), cudaMemcpyDeviceToHost);
+    cudaMemcpy(tempv+offset_nrows, mGPU->dtempv, mGPU->nrows * sizeof(double), cudaMemcpyDeviceToHost);
+
+    offset_nnz += mGPU->nnz;
+    offset_nrows += mGPU->nrows;
+  }
+  mGPU = mGPU0;
 
   double *A2=(double*)malloc(mGPU->nnz*sizeof(double));
   double *x2=(double*)malloc(mGPU->nrows*sizeof(double));

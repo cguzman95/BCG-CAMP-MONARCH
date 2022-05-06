@@ -89,9 +89,9 @@ void solveBcg_spread(int blocks, int blocks_per_device, int threads, int num_dev
               dt[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
               dAx2[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
               tempv[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
-              dx[0:pre_nrows], \
-              dy[0:pre_nrows], \
-              dz[0:pre_nrows], \
+              dx[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
+              dy[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
+              dz[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
               iA[0:pre_nrows+1], \
               jA[0:nnz], \
               A[0:nnz]) \
@@ -142,7 +142,7 @@ void solveBcg_spread(int blocks, int blocks_per_device, int threads, int num_dev
           #pragma omp parallel for
           for (int i=start; i<end; i++){
             dp0[i] = beta*dp0[i] + dr0[i] + (-1.0*omega0)*beta*dn0[i]; // cudaDevicezaxpbypc(dp0, dr0, dn0, beta, -1.0 * omega0 * beta, nrows); 
-            dy[i%pre_nrows]=diag[i]*dp0[i]; // cudaDevicemultxy(dy, diag, dp0, nrows);
+            dy[i]=diag[i]*dp0[i]; // cudaDevicemultxy(dy, diag, dp0, nrows);
             dn0[i] = 0.0; // cudaDevicesetconst(dn0, 0.0, nrows);
           }
           
@@ -166,7 +166,7 @@ void solveBcg_spread(int blocks, int blocks_per_device, int threads, int num_dev
           #pragma omp parallel for
           for (int i=start; i<end; i++){
               ds[i]= 1.0*dr0[i] + (-1.0*alpha) * dn0[i]; // cudaDevicezaxpby(1.0, dr0, -1.0 * alpha[j], dn0, ds, nrows); // // z= a*x + b*y
-              dz[i%pre_nrows]=diag[i]*ds[i]; // cudaDevicemultxy(dz, diag, ds, nrows); // precond z=diag*s 
+              dz[i]=diag[i]*ds[i]; // cudaDevicemultxy(dz, diag, ds, nrows); // precond z=diag*s 
           }
           
           #pragma omp parallel for
@@ -182,7 +182,7 @@ void solveBcg_spread(int blocks, int blocks_per_device, int threads, int num_dev
           // cudaDevicedotxy(dz, dAx2, &temp1, nrows, n_shr_empty);
           #pragma omp parallel for //reduction(+: rho1[j])
           for(int i=start; i<end; i++) {
-              reductor[i-start]=dz[i%pre_nrows]*dAx2[i]; 
+              reductor[i-start]=dz[i]*dAx2[i]; 
           }
           target_adhoc_sum_reduction(reductor, end-start);
           temp1 = reductor[0];
@@ -201,8 +201,8 @@ void solveBcg_spread(int blocks, int blocks_per_device, int threads, int num_dev
           
           #pragma omp parallel for
           for (int i=start; i<end; i++){
-              dx[i%pre_nrows]= alpha*dy[i%pre_nrows] + dx[i%pre_nrows]; // cudaDeviceaxpy(x, dy, alpha, nrows); // x=alpha*y +x
-              dx[i%pre_nrows]= omega0*dz[i%pre_nrows] + dx[i%pre_nrows]; // cudaDeviceaxpy(x, dz, omega0, nrows);
+              dx[i]= alpha*dy[i] + dx[i]; // cudaDeviceaxpy(x, dy, alpha, nrows); // x=alpha*y +x
+              dx[i]= omega0*dz[i] + dx[i]; // cudaDeviceaxpy(x, dz, omega0, nrows);
           }
       
           #pragma omp parallel for
@@ -259,7 +259,7 @@ void BCG (){
   int *iA=(int*)malloc((pre_nrows+1)*sizeof(int));
   double *A=(double*)malloc(scale*pre_nnz*sizeof(double));
   double *diag=(double*)malloc(scale*pre_nrows*sizeof(double));
-  double *x=(double*)malloc(scale*pre_nrows*sizeof(double));
+  double *dx=(double*)malloc(scale*pre_nrows*sizeof(double));
   double *tempv=(double*)malloc(scale*pre_nrows*sizeof(double));
 
   double *dr0=(double*)malloc(scale*pre_nrows*sizeof(double));;
@@ -270,9 +270,8 @@ void BCG (){
   double *ds=(double*)malloc(scale*pre_nrows*sizeof(double));
   double *dAx2=(double*)malloc(scale*pre_nrows*sizeof(double));
   
-  double *dx=(double*)malloc(pre_nrows*sizeof(double));
-  double *dy=(double*)malloc(pre_nrows*sizeof(double));
-  double *dz=(double*)malloc(pre_nrows*sizeof(double));
+  double *dy=(double*)malloc(scale*pre_nrows*sizeof(double));
+  double *dz=(double*)malloc(scale*pre_nrows*sizeof(double));
   
 
   for(int i=0; i<pre_nnz; i++){
@@ -292,7 +291,7 @@ void BCG (){
   }
 
   for(int i=0; i<pre_nrows; i++){
-    fscanf(fp, "%le", &x[i]);
+    fscanf(fp, "%le", &dx[i]);
   }
 
   for(int i=0; i<pre_nrows; i++){
@@ -306,7 +305,7 @@ void BCG (){
     memcpy(jA+(s*pre_nnz),jA,pre_nnz*sizeof(int));
     memcpy(A+(s*pre_nnz),A,pre_nnz*sizeof(double));
     memcpy(diag+(s*pre_nrows),diag,pre_nrows*sizeof(double));
-    memcpy(x+(s*pre_nrows),x,pre_nrows*sizeof(double));
+    memcpy(dx+(s*pre_nrows),dx,pre_nrows*sizeof(double));
     memcpy(tempv+(s*pre_nrows),tempv,pre_nrows*sizeof(double));
   }
   
@@ -342,9 +341,9 @@ void BCG (){
                             dt[omp_spread_start:omp_spread_size], \
                             ds[omp_spread_start:omp_spread_size], \
                           dAx2[omp_spread_start:omp_spread_size], \
-                            dy[0:pre_nrows], \
-                            dz[0:pre_nrows], \
-                            dx[0:pre_nrows])
+                            dx[omp_spread_start:omp_spread_size], \
+                            dy[omp_spread_start:omp_spread_size], \
+                            dz[omp_spread_start:omp_spread_size]) 
     }
     
     printf("solveGPU_block_thr n_cells %d len_cell %d nrows %d nnz %d blocks %d threads_block %d n_shr_empty %d offset_cells %d\n",
@@ -369,8 +368,8 @@ void BCG (){
                               dt[omp_spread_start:omp_spread_size], \
                               ds[omp_spread_start:omp_spread_size], \
                             dAx2[omp_spread_start:omp_spread_size], \
-                              dy[0:pre_nrows], \
-                              dz[0:pre_nrows])
+                              dy[omp_spread_start:omp_spread_size], \
+                              dz[omp_spread_start:omp_spread_size])
     }
   }
   

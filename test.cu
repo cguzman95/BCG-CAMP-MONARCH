@@ -32,8 +32,7 @@ static void HandleError( cudaError_t err,
 int compare_doubles(double *x, double *y, int len, const char *s){
 
   int flag=1;
-  double tol=0.01;
-  //float tol=0.0001;
+  double tol=0.0001;
   double rel_error, abs_error;
   int n_fails=0;
   for (int i=0; i<len; i++){
@@ -635,7 +634,7 @@ void BCG (){
 
   //ModelDataGPU mGPU_object;
   //ModelDataGPU *mGPU = &mGPU_object;
-  int device=0;
+  int device = 0;
   int nDevices = 4;
 
   ModelDataGPU *mGPUs = (ModelDataGPU *)malloc(nDevices * sizeof(ModelDataGPU));

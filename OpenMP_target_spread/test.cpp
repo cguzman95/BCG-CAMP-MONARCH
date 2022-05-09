@@ -40,24 +40,24 @@ int compare_doubles(double *x, double *y, int len, const char *s){
 
 #pragma omp declare target
 // x=A*b (dn0, dy, nrows, A, jA, iA)
-inline void target_spmvCSR(int row, int pre_nrows, double* x, double* b, double* A, int* jA, int* iA) 
+inline void target_spmvCSR(int row, int pre_nrows, int pre_nnz, double* x, double* b, double* A, int* jA, int* iA) 
 {
     double sum = 0.0;
-    int ind=row%pre_nrows;
-    for(int j=iA[ind]; j<iA[ind+1]; j++)
-    {
-      sum+= b[jA[j]]*A[j];
+    int m_r = row%pre_nrows; // scale down to pre_nrows, as iA was not scaled up
+    int s = row/pre_nrows;
+    for(int j=iA[m_r]; j<iA[m_r+1]; j++){
+      sum+= b[jA[j]+s*pre_nrows]*A[j];
     }
     x[row]=sum;
 }
 
-inline void target_adhoc_sum_reduction(double *reductor, int size)
+inline void target_adhoc_sum_reduction(double *reductor, int start, int end)
 {
     int red_threads=128;
     while(red_threads>0){
         #pragma omp parallel for
-        for(int i=0; i<red_threads; i++) {
-            if(i+red_threads<size){
+        for(int i=start; i<start+red_threads; i++) {
+            if(i+red_threads<end){
                 reductor[i]+=reductor[i+red_threads];
             }
         }
@@ -67,7 +67,7 @@ inline void target_adhoc_sum_reduction(double *reductor, int size)
 #pragma omp end declare target
 
 //Algorithm: Biconjugate gradient
-void solveBcg_spread(int blocks, int blocks_per_device, int threads, int num_devices, int csize, int pre_nrows, // devs config
+void solveBcg_spread(int blocks, int blocks_per_device, int threads, int num_devices, int csize, int pre_nrows, int pre_nnz, // devs config
         double *A, int *jA, int *iA, double *dx, double *tempv, //Input data
         int nrows, int maxIt, int mattype, int nnz,
         int n_cells, double tolmax, double *diag, //Init variables
@@ -76,7 +76,7 @@ void solveBcg_spread(int blocks, int blocks_per_device, int threads, int num_dev
 { 
   #pragma omp taskgroup
   {
-    double reductor[threads];
+    double reductor[nrows];
     #pragma omp target spread teams distribute \
         nowait \
         devices(0,1) spread_schedule(static, blocks_per_device) num_teams(blocks_per_device) thread_limit(threads) \
@@ -93,9 +93,9 @@ void solveBcg_spread(int blocks, int blocks_per_device, int threads, int num_dev
               dy[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
               dz[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
               iA[0:pre_nrows+1], \
-              jA[0:nnz], \
-              A[0:nnz]) \
-        map(alloc: reductor[0:threads])
+              jA[0:pre_nnz], \
+              A[0:pre_nnz]) \
+        map(alloc: reductor[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)])
     for(int j=0; j<blocks; j++) {
       int start=j*threads;
       if(start<nrows){
@@ -110,7 +110,7 @@ void solveBcg_spread(int blocks, int blocks_per_device, int threads, int num_dev
         // spare matrix vector product
         #pragma omp parallel for
         for (int i=start; i<end; i++){
-            target_spmvCSR(i,pre_nrows,dr0,dx,A,jA,iA); // cudaDeviceSpmvCSR(dr0,x,nrows,A,jA,iA); //y=A*x
+            target_spmvCSR(i,pre_nrows,pre_nnz,dr0,dx,A,jA,iA); // cudaDeviceSpmvCSR(dr0,x,nrows,A,jA,iA); //y=A*x
         }
 
 
@@ -130,14 +130,14 @@ void solveBcg_spread(int blocks, int blocks_per_device, int threads, int num_dev
           // cudaDevicedotxy(dr0, dr0h, &rho1, nrows, n_shr_empty);
           #pragma omp parallel for //reduction(+: rho1[j])
           for(int i=start; i<end; i++) {
-              reductor[i-start]=dr0[i]*dr0h[i]; 
+              reductor[i]=dr0[i]*dr0h[i]; 
           }
-          target_adhoc_sum_reduction(reductor, end-start);
-          rho1 = reductor[0];
+          target_adhoc_sum_reduction(reductor, start, end);
+          rho1 = reductor[start];
       
           beta = (rho1 / rho0) * (alpha / omega0);
           
-          if(j==0) printf("alpha=%f, beta=%f, omega0=%f, rho0=%f, rho1=%f\n", alpha, beta, omega0, rho0, rho1);
+          //if(j==1) printf("alpha=%f, beta=%f, omega0=%f, rho0=%f, rho1=%f\n", alpha, beta, omega0, rho0, rho1);
       
           #pragma omp parallel for
           for (int i=start; i<end; i++){
@@ -149,19 +149,20 @@ void solveBcg_spread(int blocks, int blocks_per_device, int threads, int num_dev
           // spare matrix vector multiplication
           #pragma omp parallel for
           for (int i=start; i<end; i++){
-              target_spmvCSR(i,pre_nrows,dn0, dy, A, jA, iA); // cudaDeviceSpmvCSR(dn0, dy, nrows, A, jA, iA);
+              target_spmvCSR(i,pre_nrows,pre_nnz,dn0, dy, A, jA, iA); // cudaDeviceSpmvCSR(dn0, dy, nrows, A, jA, iA);
           }
           
           /// cudaDevicedotxy(dr0h, dn0, &temp1, nrows, n_shr_empty);
           #pragma omp parallel for //reduction(+: rho1[j])
           for(int i=start; i<end; i++) {
-              reductor[i-start]=dr0h[i]*dn0[i]; 
+              reductor[i]=dr0h[i]*dn0[i]; 
           }
-          target_adhoc_sum_reduction(reductor, end-start);
-          temp1 = reductor[0];
+          target_adhoc_sum_reduction(reductor, start, end);
+          temp1 = reductor[start];
           
           alpha = rho1 / temp1;
-          if(j==0) printf("alpha=%f, rho1=%f, temp1=%f\n", alpha, rho1, temp1);
+          
+          //if(j==1) printf("alpha=%f, rho1=%f, temp1=%f\n", alpha, rho1, temp1);
 
           #pragma omp parallel for
           for (int i=start; i<end; i++){
@@ -171,7 +172,7 @@ void solveBcg_spread(int blocks, int blocks_per_device, int threads, int num_dev
           
           #pragma omp parallel for
           for (int i=start; i<end; i++){
-              target_spmvCSR(i,pre_nrows, dt, dz, A, jA, iA); // cudaDeviceSpmvCSR(dt, dz, nrows, A, jA, iA);
+              target_spmvCSR(i,pre_nrows,pre_nnz, dt, dz, A, jA, iA); // cudaDeviceSpmvCSR(dt, dz, nrows, A, jA, iA);
           }
           
           #pragma omp parallel for
@@ -182,22 +183,22 @@ void solveBcg_spread(int blocks, int blocks_per_device, int threads, int num_dev
           // cudaDevicedotxy(dz, dAx2, &temp1, nrows, n_shr_empty);
           #pragma omp parallel for //reduction(+: rho1[j])
           for(int i=start; i<end; i++) {
-              reductor[i-start]=dz[i]*dAx2[i]; 
+              reductor[i]=dz[i]*dAx2[i]; 
           }
-          target_adhoc_sum_reduction(reductor, end-start);
-          temp1 = reductor[0];
+          target_adhoc_sum_reduction(reductor, start, end);
+          temp1 = reductor[start];
       
           // cudaDevicedotxy(dAx2, dAx2, &temp2, nrows, n_shr_empty);
           #pragma omp parallel for //reduction(+: rho1[j])
           for(int i=start; i<end; i++) {
-              reductor[i-start]=dAx2[i]*dAx2[i]; 
+              reductor[i]=dAx2[i]*dAx2[i]; 
           }
-          target_adhoc_sum_reduction(reductor, end-start);
-          temp2 = reductor[0];
+          target_adhoc_sum_reduction(reductor, start, end);
+          temp2 = reductor[start];
           
           omega0 = temp1/temp2;
           
-          if(j==0) printf("omega0=%f, temp1=%f, temp2=%f\n", omega0, temp1, temp2);
+          //if(j==1) printf("omega0=%f, temp1=%f, temp2=%f\n", omega0, temp1, temp2);
           
           #pragma omp parallel for
           for (int i=start; i<end; i++){
@@ -214,15 +215,15 @@ void solveBcg_spread(int blocks, int blocks_per_device, int threads, int num_dev
           // cudaDevicedotxy(dr0, dr0, &temp1, nrows, n_shr_empty);
           #pragma omp parallel for //reduction(+: rho1[j])
           for(int i=start; i<end; i++) {
-              reductor[i-start]=dr0[i]*dr0[i]; 
+              reductor[i]=dr0[i]*dr0[i]; 
           }
-          target_adhoc_sum_reduction(reductor, end-start);
-          temp1 = reductor[0];
+          target_adhoc_sum_reduction(reductor, start, end);
+          temp1 = reductor[start];
           
           temp1 = sqrtf(temp1);
           rho0 = rho1;
           
-          if(j==0) printf("temp1=%f, rho0=%f, rho1=%f, tolmax=%f, it=%d, maxIt=%d\n", temp1, rho0, rho1, tolmax, it, maxIt);
+          //if(j==1) printf("temp1=%f, rho0=%f, rho1=%f, tolmax=%f, it=%d, maxIt=%d\n", temp1, rho0, rho1, tolmax, it, maxIt);
           
           it++;
         }while(it<maxIt && temp1>tolmax);
@@ -255,11 +256,11 @@ void BCG (){
   fscanf(fp, "%le", &tolmax);
   fscanf(fp, "%d",  &scale);
 
-  int *jA=(int*)malloc(scale*pre_nnz*sizeof(int));
+  int *jA=(int*)malloc(pre_nnz*sizeof(int));
+  double *A=(double*)malloc(pre_nnz*sizeof(double));
   int *iA=(int*)malloc((pre_nrows+1)*sizeof(int));
-  double *A=(double*)malloc(scale*pre_nnz*sizeof(double));
+  
   double *diag=(double*)malloc(scale*pre_nrows*sizeof(double));
-  double *dx=(double*)malloc(scale*pre_nrows*sizeof(double));
   double *tempv=(double*)malloc(scale*pre_nrows*sizeof(double));
 
   double *dr0=(double*)malloc(scale*pre_nrows*sizeof(double));;
@@ -270,6 +271,7 @@ void BCG (){
   double *ds=(double*)malloc(scale*pre_nrows*sizeof(double));
   double *dAx2=(double*)malloc(scale*pre_nrows*sizeof(double));
   
+  double *dx=(double*)malloc(scale*pre_nrows*sizeof(double));
   double *dy=(double*)malloc(scale*pre_nrows*sizeof(double));
   double *dz=(double*)malloc(scale*pre_nrows*sizeof(double));
   
@@ -300,10 +302,7 @@ void BCG (){
   
   fclose(fp);
   
-  for(int s=1;s<scale;s++)
-  {
-    memcpy(jA+(s*pre_nnz),jA,pre_nnz*sizeof(int));
-    memcpy(A+(s*pre_nnz),A,pre_nnz*sizeof(double));
+  for(int s=1;s<scale;s++){
     memcpy(diag+(s*pre_nrows),diag,pre_nrows*sizeof(double));
     memcpy(dx+(s*pre_nrows),dx,pre_nrows*sizeof(double));
     memcpy(tempv+(s*pre_nrows),tempv,pre_nrows*sizeof(double));
@@ -332,8 +331,9 @@ void BCG (){
               map(to:       iA[0:pre_nrows+1], \
                           diag[omp_spread_start:omp_spread_size], \
                         tempv[omp_spread_start:omp_spread_size], \
-                            jA[0:nnz], \
-                            A[0:nnz]) \
+                        dx[omp_spread_start:omp_spread_size], \
+                            jA[0:pre_nnz], \
+                            A[0:pre_nnz]) \
               map(alloc:   dr0[omp_spread_start:omp_spread_size], \
                           dr0h[omp_spread_start:omp_spread_size], \
                           dn0[omp_spread_start:omp_spread_size], \
@@ -341,7 +341,6 @@ void BCG (){
                             dt[omp_spread_start:omp_spread_size], \
                             ds[omp_spread_start:omp_spread_size], \
                           dAx2[omp_spread_start:omp_spread_size], \
-                            dx[omp_spread_start:omp_spread_size], \
                             dy[omp_spread_start:omp_spread_size], \
                             dz[omp_spread_start:omp_spread_size]) 
     }
@@ -349,7 +348,7 @@ void BCG (){
     printf("solveGPU_block_thr n_cells %d len_cell %d nrows %d nnz %d blocks %d threads_block %d n_shr_empty %d offset_cells %d\n",
                 n_cells,len_cell,nrows,nnz,blocks,threads, blocks*threads-nrows,offset_cells);
     
-    solveBcg_spread(blocks, blocks_per_device, threads, num_devices, csize, pre_nrows, A, jA, iA, dx, tempv, nrows, maxIt, mattype, nnz, n_cells, tolmax, diag, dr0, dr0h, dn0, dp0, dt, ds, dAx2, dy, dz);
+    solveBcg_spread(blocks, blocks_per_device, threads, num_devices, csize, pre_nrows, pre_nnz, A, jA, iA, dx, tempv, nrows, maxIt, mattype, nnz, n_cells, tolmax, diag, dr0, dr0h, dn0, dp0, dt, ds, dAx2, dy, dz);
 
     #pragma omp taskgroup
     {
@@ -358,9 +357,12 @@ void BCG (){
               devices(0,1) \
               range(0:nrows) \
               chunk_size(csize) \
-              map(from:    diag[omp_spread_start:omp_spread_size], \
+              map(from:    iA[0:pre_nrows+1], \
+                            diag[omp_spread_start:omp_spread_size], \
                           tempv[omp_spread_start:omp_spread_size], \
-                          dx[omp_spread_start:omp_spread_size]) \
+                          dx[omp_spread_start:omp_spread_size], \
+                          jA[0:pre_nnz], \
+                            A[0:pre_nnz]) \
               map(release:   dr0[omp_spread_start:omp_spread_size], \
                             dr0h[omp_spread_start:omp_spread_size], \
                             dn0[omp_spread_start:omp_spread_size], \
@@ -369,7 +371,7 @@ void BCG (){
                               ds[omp_spread_start:omp_spread_size], \
                             dAx2[omp_spread_start:omp_spread_size], \
                               dy[omp_spread_start:omp_spread_size], \
-                              dz[omp_spread_start:omp_spread_size])
+                              dz[omp_spread_start:omp_spread_size])                       
     }
   }
   
@@ -398,7 +400,7 @@ void BCG (){
   int s;
   for(s=0;s<scale;s++)
   {
-    if(compare_doubles(A2,A+(s*pre_nnz),pre_nnz,"A2")==0) flag=0;
+    if(compare_doubles(A2,A,pre_nnz,"A2")==0) flag=0;
     if(compare_doubles(x2,dx+(s*pre_nrows),pre_nrows,"x2")==0)  flag=0;
     if(compare_doubles(tempv2,tempv+(s*pre_nrows),pre_nrows,"tempv2")==0)  flag=0;
     if(flag==0)
@@ -409,6 +411,29 @@ void BCG (){
     printf("FAIL_spread at %d\n",s);
   else
     printf("SUCCESS_spread\n");
+  
+  free(tempv2);
+  free(x2);
+  free(A2);
+  
+  free(jA);
+  free(A);
+  free(iA);
+  
+  free(diag);
+  free(tempv);
+
+  free(dr0);
+  free(dr0h);
+  free(dn0);
+  free(dp0);
+  free(dt);
+  free(ds);
+  free(dAx2);
+  
+  free(dx);
+  free(dy);
+  free(dz);
 }
 
 int main()

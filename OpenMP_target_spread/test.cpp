@@ -72,15 +72,13 @@ void solveBcg_spread(int blocks, int blocks_per_device, int threads, int num_dev
         int nrows, int maxIt, int mattype, int nnz,
         int n_cells, double tolmax, double *diag, //Init variables
         double *dr0, double *dr0h, double *dn0, double *dp0,
-        double *dt, double *ds, double *dAx2, double *dy, double *dz)// Auxiliary vectors
+        double *dt, double *ds, double *dAx2, double *dy, double *dz, double *reductor)// Auxiliary vectors
 { 
-  double *reductor=(double*)malloc(nrows*sizeof(double));
-  
   #pragma omp taskgroup
   {
     #pragma omp target spread teams distribute \
         nowait \
-        devices(0,1) spread_schedule(static, blocks_per_device) num_teams(blocks_per_device) thread_limit(threads) \
+        devices(0,1,2,3) spread_schedule(static, blocks_per_device) num_teams(blocks_per_device) thread_limit(threads) \
         map(diag[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
             dr0[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
             dr0h[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
@@ -93,10 +91,10 @@ void solveBcg_spread(int blocks, int blocks_per_device, int threads, int num_dev
               dx[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
               dy[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
               dz[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
+              reductor[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
               iA[0:pre_nrows+1], \
               jA[0:pre_nnz], \
-              A[0:pre_nnz]) \
-        map(alloc: reductor[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)])
+              A[0:pre_nnz])
     for(int j=0; j<blocks; j++) {
       int start=j*threads;
       if(start<nrows){
@@ -231,8 +229,6 @@ void solveBcg_spread(int blocks, int blocks_per_device, int threads, int num_dev
       }
     }
   }
-  
-  free(reductor);
 }
 
 void BCG (){
@@ -278,6 +274,8 @@ void BCG (){
   double *dy=(double*)malloc(scale*pre_nrows*sizeof(double));
   double *dz=(double*)malloc(scale*pre_nrows*sizeof(double));
   
+  double *reductor=(double*)malloc(scale*pre_nrows*sizeof(double));
+  
 
   for(int i=0; i<pre_nnz; i++){
     fscanf(fp, "%d", &jA[i]);
@@ -316,57 +314,31 @@ void BCG (){
     int nrows=pre_nrows*scale;
     int nnz=pre_nnz*scale;
     
-    int num_devices=2;
+    int num_devices=4;
     int threads=154;
-    int blocks=pre_n_cells*scale;
-    int blocks_per_device=blocks/num_devices;    
-    int csize=blocks_per_device*threads; // 770
+    int blocks=pre_n_cells*scale; // 10 * 1
+    int blocks_per_device=blocks/num_devices;    // 10 / 4 = 2
+    int csize=blocks_per_device*threads; // 2*154
     int offset_cells=0;
-    int len_cell=nrows/n_cells;
+    int len_cell=nrows/n_cells; // 154
     
-    #pragma omp taskgroup
+    #pragma omp parallel
+    #pragma omp single
     {
-      #pragma omp target enter data spread \
-              nowait \
-              devices(0,1) \
-              range(0:nrows) \
-              chunk_size(csize) \
-              map(to:       iA[0:pre_nrows+1], \
-                          diag[omp_spread_start:omp_spread_size], \
-                        tempv[omp_spread_start:omp_spread_size], \
-                        dx[omp_spread_start:omp_spread_size], \
-                            jA[0:pre_nnz], \
-                            A[0:pre_nnz]) \
-              map(alloc:   dr0[omp_spread_start:omp_spread_size], \
-                          dr0h[omp_spread_start:omp_spread_size], \
-                          dn0[omp_spread_start:omp_spread_size], \
-                          dp0[omp_spread_start:omp_spread_size], \
-                            dt[omp_spread_start:omp_spread_size], \
-                            ds[omp_spread_start:omp_spread_size], \
-                          dAx2[omp_spread_start:omp_spread_size], \
-                            dy[omp_spread_start:omp_spread_size], \
-                            dz[omp_spread_start:omp_spread_size]) 
-    }
-    
-    printf("solveGPU_block_thr n_cells %d len_cell %d nrows %d nnz %d blocks %d threads_block %d n_shr_empty %d offset_cells %d\n",
-                n_cells,len_cell,nrows,nnz,blocks,threads, blocks*threads-nrows,offset_cells);
-    
-    solveBcg_spread(blocks, blocks_per_device, threads, num_devices, csize, pre_nrows, pre_nnz, A, jA, iA, dx, tempv, nrows, maxIt, mattype, nnz, n_cells, tolmax, diag, dr0, dr0h, dn0, dp0, dt, ds, dAx2, dy, dz);
-
-    #pragma omp taskgroup
-    {
-      #pragma omp target exit data spread \
-              nowait \
-              devices(0,1) \
-              range(0:nrows) \
-              chunk_size(csize) \
-              map(from:    iA[0:pre_nrows+1], \
+      #pragma omp taskgroup
+      {
+        #pragma omp target enter data spread \
+                nowait \
+                devices(0,1,2,3) \
+                range(0:nrows) \
+                chunk_size(csize) \
+                map(to:       iA[0:pre_nrows+1], \
                             diag[omp_spread_start:omp_spread_size], \
                           tempv[omp_spread_start:omp_spread_size], \
                           dx[omp_spread_start:omp_spread_size], \
-                          jA[0:pre_nnz], \
-                            A[0:pre_nnz]) \
-              map(release:   dr0[omp_spread_start:omp_spread_size], \
+                              jA[0:pre_nnz], \
+                              A[0:pre_nnz]) \
+                map(alloc:   dr0[omp_spread_start:omp_spread_size], \
                             dr0h[omp_spread_start:omp_spread_size], \
                             dn0[omp_spread_start:omp_spread_size], \
                             dp0[omp_spread_start:omp_spread_size], \
@@ -374,7 +346,39 @@ void BCG (){
                               ds[omp_spread_start:omp_spread_size], \
                             dAx2[omp_spread_start:omp_spread_size], \
                               dy[omp_spread_start:omp_spread_size], \
-                              dz[omp_spread_start:omp_spread_size])                       
+                              dz[omp_spread_start:omp_spread_size], \
+                              reductor[omp_spread_start:omp_spread_size])
+      }
+      
+      printf("solveGPU_block_thr n_cells %d len_cell %d nrows %d nnz %d blocks %d threads_block %d n_shr_empty %d offset_cells %d\n",
+                  n_cells,len_cell,nrows,nnz,blocks,threads, blocks*threads-nrows,offset_cells);
+      
+      solveBcg_spread(blocks, blocks_per_device, threads, num_devices, csize, pre_nrows, pre_nnz, A, jA, iA, dx, tempv, nrows, maxIt, mattype, nnz, n_cells, tolmax, diag, dr0, dr0h, dn0, dp0, dt, ds, dAx2, dy, dz, reductor);
+
+      #pragma omp taskgroup
+      {
+        #pragma omp target exit data spread \
+                nowait \
+                devices(0,1,2,3) \
+                range(0:nrows) \
+                chunk_size(csize) \
+                map(from:    iA[0:pre_nrows+1], \
+                              diag[omp_spread_start:omp_spread_size], \
+                            tempv[omp_spread_start:omp_spread_size], \
+                            dx[omp_spread_start:omp_spread_size], \
+                            jA[0:pre_nnz], \
+                              A[0:pre_nnz]) \
+                map(release:   dr0[omp_spread_start:omp_spread_size], \
+                              dr0h[omp_spread_start:omp_spread_size], \
+                              dn0[omp_spread_start:omp_spread_size], \
+                              dp0[omp_spread_start:omp_spread_size], \
+                                dt[omp_spread_start:omp_spread_size], \
+                                ds[omp_spread_start:omp_spread_size], \
+                              dAx2[omp_spread_start:omp_spread_size], \
+                                dy[omp_spread_start:omp_spread_size], \
+                                dz[omp_spread_start:omp_spread_size], \
+                                reductor[omp_spread_start:omp_spread_size])                       
+      }
     }
   }
   
@@ -437,6 +441,7 @@ void BCG (){
   free(dx);
   free(dy);
   free(dz);
+  free(reductor);
 }
 
 int main()

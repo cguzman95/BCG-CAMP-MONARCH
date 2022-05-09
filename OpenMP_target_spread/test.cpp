@@ -74,9 +74,10 @@ void solveBcg_spread(int blocks, int blocks_per_device, int threads, int num_dev
         double *dr0, double *dr0h, double *dn0, double *dp0,
         double *dt, double *ds, double *dAx2, double *dy, double *dz)// Auxiliary vectors
 { 
+  double *reductor=(double*)malloc(nrows*sizeof(double));
+  
   #pragma omp taskgroup
   {
-    double reductor[nrows];
     #pragma omp target spread teams distribute \
         nowait \
         devices(0,1) spread_schedule(static, blocks_per_device) num_teams(blocks_per_device) thread_limit(threads) \
@@ -230,6 +231,8 @@ void solveBcg_spread(int blocks, int blocks_per_device, int threads, int num_dev
       }
     }
   }
+  
+  free(reductor);
 }
 
 void BCG (){

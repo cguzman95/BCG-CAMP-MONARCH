@@ -5,6 +5,6 @@ cd build
 make -j 4 #VERBOSE=1
 
 
-time ./test
-/apps/NVIDIA-HPC-SDK/21.3/Linux_ppc64le/21.3/compilers/bin/nsys profile --stats=true --force-overwrite=true --cuda-memory-usage=true -o target_spread_two_devices.nsys.txt ./test
+./test
+#/apps/NVIDIA-HPC-SDK/21.3/Linux_ppc64le/21.3/compilers/bin/nsys profile --stats=true --force-overwrite=true --cuda-memory-usage=true -o target_spread_two_devices.nsys.txt ./test
 

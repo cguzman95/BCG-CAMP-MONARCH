@@ -10,6 +10,18 @@
 #include <cmath>
 #include <cstring>
 
+#ifndef SCALE
+#define SCALE 1
+#endif
+
+#ifndef NUM_DEVICES
+#define NUM_DEVICES 1
+#endif
+
+#ifndef DEVICE_LIST
+#define DEVICE_LIST 0
+#endif
+
 int compare_doubles(double *x, double *y, int len, const char *s){
 
   int flag=1;
@@ -67,7 +79,7 @@ inline void target_adhoc_sum_reduction(double *reductor, int start, int end)
 #pragma omp end declare target
 
 //Algorithm: Biconjugate gradient
-void solveBcg_spread(int blocks, int blocks_per_device, int threads, int num_devices, int csize, int pre_nrows, int pre_nnz, // devs config
+void solveBcg_spread(int blocks, int blocks_per_device, int threads, int csize, int pre_nrows, int pre_nnz, // devs config
         double *A, int *jA, int *iA, double *dx, double *tempv, //Input data
         int nrows, int maxIt, int mattype, int nnz,
         int n_cells, double tolmax, double *diag, //Init variables
@@ -76,25 +88,29 @@ void solveBcg_spread(int blocks, int blocks_per_device, int threads, int num_dev
 { 
   #pragma omp taskgroup
   {
+    auto &&cap_size = [threads, nrows] (int start, int size) {
+      return threads*(start+size) >= nrows ? nrows-start*threads : size*threads;
+    };
+      
     #pragma omp target spread teams distribute \
         nowait \
-        devices(0,1,2,3) spread_schedule(static, blocks_per_device) num_teams(blocks_per_device) thread_limit(threads) \
-        map(diag[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
-            dr0[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
-            dr0h[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
-            dn0[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
-            dp0[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
-              ds[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
-              dt[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
-              dAx2[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
-              tempv[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
-              dx[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
-              dy[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
-              dz[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
-              reductor[omp_spread_start*threads:(threads*(omp_spread_start+omp_spread_size)>=nrows?nrows-omp_spread_start*threads:omp_spread_size*threads)], \
-              iA[0:pre_nrows+1], \
-              jA[0:pre_nnz], \
-              A[0:pre_nnz])
+        devices(DEVICE_LIST) spread_schedule(static, blocks_per_device) num_teams(blocks_per_device) thread_limit(threads) \
+        map(    diag[omp_spread_start*threads : cap_size(omp_spread_start,omp_spread_size)], \
+                 dr0[omp_spread_start*threads : cap_size(omp_spread_start,omp_spread_size)], \
+                dr0h[omp_spread_start*threads : cap_size(omp_spread_start,omp_spread_size)], \
+                 dn0[omp_spread_start*threads : cap_size(omp_spread_start,omp_spread_size)], \
+                 dp0[omp_spread_start*threads : cap_size(omp_spread_start,omp_spread_size)], \
+                  ds[omp_spread_start*threads : cap_size(omp_spread_start,omp_spread_size)], \
+                  dt[omp_spread_start*threads : cap_size(omp_spread_start,omp_spread_size)], \
+                dAx2[omp_spread_start*threads : cap_size(omp_spread_start,omp_spread_size)], \
+               tempv[omp_spread_start*threads : cap_size(omp_spread_start,omp_spread_size)], \
+                  dx[omp_spread_start*threads : cap_size(omp_spread_start,omp_spread_size)], \
+                  dy[omp_spread_start*threads : cap_size(omp_spread_start,omp_spread_size)], \
+                  dz[omp_spread_start*threads : cap_size(omp_spread_start,omp_spread_size)], \
+            reductor[omp_spread_start*threads : cap_size(omp_spread_start,omp_spread_size)], \
+                  iA[0:pre_nrows+1], \
+                  jA[0:pre_nnz], \
+                   A[0:pre_nnz])
     for(int j=0; j<blocks; j++) {
       int start=j*threads;
       if(start<nrows){
@@ -244,7 +260,6 @@ void BCG (){
   int pre_nnz=0;
   int maxIt=0;
   int mattype=0;
-  int scale=1;
   double tolmax=0.0;
   
   fscanf(fp, "%d",  &pre_n_cells);
@@ -253,30 +268,28 @@ void BCG (){
   fscanf(fp, "%d",  &maxIt);
   fscanf(fp, "%d",  &mattype);
   fscanf(fp, "%le", &tolmax);
-  fscanf(fp, "%d",  &scale);
-
+  
   int *jA=(int*)malloc(pre_nnz*sizeof(int));
   double *A=(double*)malloc(pre_nnz*sizeof(double));
   int *iA=(int*)malloc((pre_nrows+1)*sizeof(int));
   
-  double *diag=(double*)malloc(scale*pre_nrows*sizeof(double));
-  double *tempv=(double*)malloc(scale*pre_nrows*sizeof(double));
+  double *diag=(double*)malloc(SCALE*pre_nrows*sizeof(double));
+  double *tempv=(double*)malloc(SCALE*pre_nrows*sizeof(double));
 
-  double *dr0=(double*)malloc(scale*pre_nrows*sizeof(double));;
-  double *dr0h=(double*)malloc(scale*pre_nrows*sizeof(double));
-  double *dn0=(double*)malloc(scale*pre_nrows*sizeof(double));
-  double *dp0=(double*)malloc(scale*pre_nrows*sizeof(double));
-  double *dt=(double*)malloc(scale*pre_nrows*sizeof(double));
-  double *ds=(double*)malloc(scale*pre_nrows*sizeof(double));
-  double *dAx2=(double*)malloc(scale*pre_nrows*sizeof(double));
+  double *dr0=(double*)malloc(SCALE*pre_nrows*sizeof(double));;
+  double *dr0h=(double*)malloc(SCALE*pre_nrows*sizeof(double));
+  double *dn0=(double*)malloc(SCALE*pre_nrows*sizeof(double));
+  double *dp0=(double*)malloc(SCALE*pre_nrows*sizeof(double));
+  double *dt=(double*)malloc(SCALE*pre_nrows*sizeof(double));
+  double *ds=(double*)malloc(SCALE*pre_nrows*sizeof(double));
+  double *dAx2=(double*)malloc(SCALE*pre_nrows*sizeof(double));
   
-  double *dx=(double*)malloc(scale*pre_nrows*sizeof(double));
-  double *dy=(double*)malloc(scale*pre_nrows*sizeof(double));
-  double *dz=(double*)malloc(scale*pre_nrows*sizeof(double));
+  double *dx=(double*)malloc(SCALE*pre_nrows*sizeof(double));
+  double *dy=(double*)malloc(SCALE*pre_nrows*sizeof(double));
+  double *dz=(double*)malloc(SCALE*pre_nrows*sizeof(double));
   
-  double *reductor=(double*)malloc(scale*pre_nrows*sizeof(double));
+  double *reductor=(double*)malloc(SCALE*pre_nrows*sizeof(double));
   
-
   for(int i=0; i<pre_nnz; i++){
     fscanf(fp, "%d", &jA[i]);
   }
@@ -303,22 +316,21 @@ void BCG (){
   
   fclose(fp);
   
-  for(int s=1;s<scale;s++){
+  for(int s=1;s<SCALE;s++){
     memcpy(diag+(s*pre_nrows),diag,pre_nrows*sizeof(double));
     memcpy(dx+(s*pre_nrows),dx,pre_nrows*sizeof(double));
     memcpy(tempv+(s*pre_nrows),tempv,pre_nrows*sizeof(double));
   }
   
   {
-    int n_cells=pre_n_cells*scale;
-    int nrows=pre_nrows*scale;
-    int nnz=pre_nnz*scale;
+    int n_cells=pre_n_cells*SCALE;
+    int nrows=pre_nrows*SCALE;
+    int nnz=pre_nnz*SCALE;
     
-    int num_devices=4;
     int threads=154;
-    int blocks=pre_n_cells*scale; // 10 * 1
-    int blocks_per_device=blocks/num_devices;    // 10 / 4 = 2
-    int csize=blocks_per_device*threads; // 2*154
+    int blocks=pre_n_cells*SCALE; // 2.500.000
+    int blocks_per_device=blocks/NUM_DEVICES;    // 725.000
+    int csize=blocks_per_device*threads; // 725.000 * 154
     int offset_cells=0;
     int len_cell=nrows/n_cells; // 154
     
@@ -329,55 +341,55 @@ void BCG (){
       {
         #pragma omp target enter data spread \
                 nowait \
-                devices(0,1,2,3) \
+                devices(DEVICE_LIST) \
                 range(0:nrows) \
                 chunk_size(csize) \
                 map(to:       iA[0:pre_nrows+1], \
-                            diag[omp_spread_start:omp_spread_size], \
-                          tempv[omp_spread_start:omp_spread_size], \
-                          dx[omp_spread_start:omp_spread_size], \
                               jA[0:pre_nnz], \
-                              A[0:pre_nnz]) \
+                               A[0:pre_nnz], \
+                            diag[omp_spread_start:omp_spread_size], \
+                           tempv[omp_spread_start:omp_spread_size], \
+                              dx[omp_spread_start:omp_spread_size]) \
                 map(alloc:   dr0[omp_spread_start:omp_spread_size], \
                             dr0h[omp_spread_start:omp_spread_size], \
-                            dn0[omp_spread_start:omp_spread_size], \
-                            dp0[omp_spread_start:omp_spread_size], \
+                             dn0[omp_spread_start:omp_spread_size], \
+                             dp0[omp_spread_start:omp_spread_size], \
                               dt[omp_spread_start:omp_spread_size], \
                               ds[omp_spread_start:omp_spread_size], \
                             dAx2[omp_spread_start:omp_spread_size], \
                               dy[omp_spread_start:omp_spread_size], \
                               dz[omp_spread_start:omp_spread_size], \
-                              reductor[omp_spread_start:omp_spread_size])
+                        reductor[omp_spread_start:omp_spread_size])
       }
       
       printf("solveGPU_block_thr n_cells %d len_cell %d nrows %d nnz %d blocks %d threads_block %d n_shr_empty %d offset_cells %d\n",
                   n_cells,len_cell,nrows,nnz,blocks,threads, blocks*threads-nrows,offset_cells);
       
-      solveBcg_spread(blocks, blocks_per_device, threads, num_devices, csize, pre_nrows, pre_nnz, A, jA, iA, dx, tempv, nrows, maxIt, mattype, nnz, n_cells, tolmax, diag, dr0, dr0h, dn0, dp0, dt, ds, dAx2, dy, dz, reductor);
+      solveBcg_spread(blocks, blocks_per_device, threads, csize, pre_nrows, pre_nnz, A, jA, iA, dx, tempv, nrows, maxIt, mattype, nnz, n_cells, tolmax, diag, dr0, dr0h, dn0, dp0, dt, ds, dAx2, dy, dz, reductor);
 
       #pragma omp taskgroup
       {
         #pragma omp target exit data spread \
                 nowait \
-                devices(0,1,2,3) \
+                devices(DEVICE_LIST) \
                 range(0:nrows) \
                 chunk_size(csize) \
-                map(from:    iA[0:pre_nrows+1], \
-                              diag[omp_spread_start:omp_spread_size], \
+                map(from:      dx[omp_spread_start:omp_spread_size]) \
+                map(release:   iA[0:pre_nrows+1], \
+                               jA[0:pre_nnz], \
+                                A[0:pre_nnz], \
+                             diag[omp_spread_start:omp_spread_size], \
                             tempv[omp_spread_start:omp_spread_size], \
-                            dx[omp_spread_start:omp_spread_size], \
-                            jA[0:pre_nnz], \
-                              A[0:pre_nnz]) \
-                map(release:   dr0[omp_spread_start:omp_spread_size], \
-                              dr0h[omp_spread_start:omp_spread_size], \
+                              dr0[omp_spread_start:omp_spread_size], \
+                             dr0h[omp_spread_start:omp_spread_size], \
                               dn0[omp_spread_start:omp_spread_size], \
                               dp0[omp_spread_start:omp_spread_size], \
-                                dt[omp_spread_start:omp_spread_size], \
-                                ds[omp_spread_start:omp_spread_size], \
-                              dAx2[omp_spread_start:omp_spread_size], \
-                                dy[omp_spread_start:omp_spread_size], \
-                                dz[omp_spread_start:omp_spread_size], \
-                                reductor[omp_spread_start:omp_spread_size])                       
+                               dt[omp_spread_start:omp_spread_size], \
+                               ds[omp_spread_start:omp_spread_size], \
+                             dAx2[omp_spread_start:omp_spread_size], \
+                               dy[omp_spread_start:omp_spread_size], \
+                               dz[omp_spread_start:omp_spread_size], \
+                         reductor[omp_spread_start:omp_spread_size])                       
       }
     }
   }
@@ -405,7 +417,7 @@ void BCG (){
 
   int flag=1;
   int s;
-  for(s=0;s<scale;s++)
+  for(s=0;s<SCALE;s++)
   {
     if(compare_doubles(A2,A,pre_nnz,"A2")==0) flag=0;
     if(compare_doubles(x2,dx+(s*pre_nrows),pre_nrows,"x2")==0)  flag=0;

@@ -15,6 +15,17 @@ set(LLVM_IR_FLAGS "-O3")
 include_directories(./)
 include_directories(${LLVM}/projects/openmp/runtime/src)
 
+#add_compile_definitions(SCALE=100000 NUM_DEVICES=1 DEVICE_LIST=0)
+
+# weak scaling
+#add_compile_definitions(SCALE=200000 NUM_DEVICES=2 DEVICE_LIST=0,1)
+#add_compile_definitions(SCALE=400000 NUM_DEVICES=4 DEVICE_LIST=0,1,2,3)
+
+# strong scaling
+#add_compile_definitions(SCALE=100000 NUM_DEVICES=2 DEVICE_LIST=0,1)
+add_compile_definitions(SCALE=100000 NUM_DEVICES=4 DEVICE_LIST=0,1,2,3)
+
+
 set(CMAKE_CXX_FLAGS "${LLVM_IR_FLAGS} -Wall -g -fopenmp -fopenmp-targets=${OMPTARGETS} --libomptarget-nvptx-bc-path=${LLVM}/projects/openmp/libomptarget")
 set(CMAKE_EXE_LINKER_FLAGS "-g -L${LLVM}/lib -L${LLVM}/projects/openmp/libomptarget -lm ${EXTRA_FLAGS}")
 

@@ -635,7 +635,8 @@ void BCG (){
   //ModelDataGPU mGPU_object;
   //ModelDataGPU *mGPU = &mGPU_object;
   int device = 0;
-  int nDevices = 4;
+  int nDevices = 1;
+  int n_cells_multiplier = 2;
 
   ModelDataGPU *mGPUs = (ModelDataGPU *)malloc(nDevices * sizeof(ModelDataGPU));
   ModelDataGPU *mGPU = &mGPUs[0];
@@ -656,29 +657,6 @@ void BCG (){
   fscanf(fp, "%d", &mGPU0->mattype);
   fscanf(fp, "%le", &mGPU0->tolmax);
 
-  int remainder = mGPU0->n_cells % nDevices;
-  for (int iDevice = 0; iDevice < nDevices; iDevice++) {
-    cudaSetDevice(iDevice);
-    mGPU = &mGPUs[iDevice];
-
-    int n_cells = int(mGPU0->n_cells / nDevices);
-    if (remainder!=0 && iDevice==0){
-      //printf("REMAINDER  nDevicesMODn_cells!=0\n");
-      //printf("remainder %d n_cells_total %d nDevices %d n_cells %d\n",remainder,mGPU0->n_cells,nDevices,n_cells);
-      n_cells+=remainder;
-    }
-
-    mGPU->n_cells=n_cells;
-    mGPU->nrows=mGPU0->nrows/mGPU0->n_cells*mGPU->n_cells;
-    mGPU->nnz=mGPU0->nnz/mGPU0->n_cells*mGPU->n_cells;
-    mGPU->maxIt=mGPU0->maxIt;
-    mGPU->mattype=mGPU0->mattype;
-    mGPU->tolmax=mGPU0->tolmax;
-
-    //printf("mGPU->nrows %d mGPU0->nrows %d mGPU0->n_cells %d mGPU->n_cells %d",
-          // mGPU->nrows,mGPU0->nrows,mGPU0->n_cells,mGPU->n_cells);
-
-  }
   mGPU = mGPU0;
 
   //ModelDataGPU *mGPU2 = &mGPUs[0];
@@ -734,11 +712,28 @@ void BCG (){
   }
 */
 
+  //mGPU0->n_cells=mGPU0->n_cells*n_cells_multiplier;
+
   int offset_nnz = 0;
   int offset_nrows = 0;
+  int remainder = mGPU0->n_cells % nDevices;
   for (int iDevice = 0; iDevice < nDevices; iDevice++) {
     cudaSetDevice(iDevice);
     mGPU = &mGPUs[iDevice];
+
+    int n_cells = int(mGPU0->n_cells / nDevices);
+    if (remainder!=0 && iDevice==0){
+      //printf("REMAINDER  nDevicesMODn_cells!=0\n");
+      //printf("remainder %d n_cells_total %d nDevices %d n_cells %d\n",remainder,mGPU0->n_cells,nDevices,n_cells);
+      n_cells+=remainder;
+    }
+
+    mGPU->n_cells=n_cells;
+    mGPU->nrows=mGPU0->nrows/mGPU0->n_cells*mGPU->n_cells;
+    mGPU->nnz=mGPU0->nnz/mGPU0->n_cells*mGPU->n_cells;
+    mGPU->maxIt=mGPU0->maxIt;
+    mGPU->mattype=mGPU0->mattype;
+    mGPU->tolmax=mGPU0->tolmax;
 
     cudaMalloc((void **) &mGPU->djA, mGPU->nnz * sizeof(int));
     cudaMalloc((void **) &mGPU->diA, (mGPU->nrows + 1) * sizeof(int));

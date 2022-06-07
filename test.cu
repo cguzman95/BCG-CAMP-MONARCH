@@ -635,8 +635,8 @@ void BCG (){
   //ModelDataGPU mGPU_object;
   //ModelDataGPU *mGPU = &mGPU_object;
   int device = 0;
-  int nDevices = 1;
-  int n_cells_multiplier = 2;
+  int nDevices = 4;
+  int n_cells_multiplier = 100;
 
   ModelDataGPU *mGPUs = (ModelDataGPU *)malloc(nDevices * sizeof(ModelDataGPU));
   ModelDataGPU *mGPU = &mGPUs[0];
@@ -657,45 +657,45 @@ void BCG (){
   fscanf(fp, "%d", &mGPU0->mattype);
   fscanf(fp, "%le", &mGPU0->tolmax);
 
-  mGPU = mGPU0;
+  //mGPU = mGPU0;
 
   //ModelDataGPU *mGPU2 = &mGPUs[0];
   //printf("mGPU->nnz %d mGPUs[0]->nnz %d\n",mGPU->nnz,mGPU2->nnz);
 
-  int *jA=(int*)malloc(mGPU->nnz*sizeof(int));
-  int *iA=(int*)malloc((mGPU->nrows+1)*sizeof(int));
-  double *A=(double*)malloc(mGPU->nnz*sizeof(double));
-  double *diag=(double*)malloc(mGPU->nrows*sizeof(double));
-  double *x=(double*)malloc(mGPU->nrows*sizeof(double));
-  double *tempv=(double*)malloc(mGPU->nrows*sizeof(double));
+  int *jA_aux=(int*)malloc(mGPU0->nnz*sizeof(int));
+  int *iA_aux=(int*)malloc((mGPU0->nrows+1)*sizeof(int));
+  double *A_aux=(double*)malloc(mGPU0->nnz*sizeof(double));
+  double *diag_aux=(double*)malloc(mGPU0->nrows*sizeof(double));
+  double *x_aux=(double*)malloc(mGPU0->nrows*sizeof(double));
+  double *tempv_aux=(double*)malloc(mGPU0->nrows*sizeof(double));
 
-  for(int i=0; i<mGPU->nnz; i++){
-    fscanf(fp, "%d", &jA[i]);
-    //printf("%d %d\n",i, jA[i]);
+  for(int i=0; i<mGPU0->nnz; i++){
+    fscanf(fp, "%d", &jA_aux[i]);
+    //printf("%d %d\n",i, jA_aux[i]);
   }
 
-  for(int i=0; i<mGPU->nrows+1; i++){
-    fscanf(fp, "%d", &iA[i]);
+  for(int i=0; i<mGPU0->nrows+1; i++){
+    fscanf(fp, "%d", &iA_aux[i]);
     //printf("%d %d\n",i, iA[i]);
   }
 
-  for(int i=0; i<mGPU->nnz; i++){
-    fscanf(fp, "%le", &A[i]);
+  for(int i=0; i<mGPU0->nnz; i++){
+    fscanf(fp, "%le", &A_aux[i]);
     //printf("%d %le\n",i, A[i]);
   }
 
-  for(int i=0; i<mGPU->nrows; i++){
-    fscanf(fp, "%le", &diag[i]);
+  for(int i=0; i<mGPU0->nrows; i++){
+    fscanf(fp, "%le", &diag_aux[i]);
     //printf("%d %le\n",i, diag[i]);
   }
 
-  for(int i=0; i<mGPU->nrows; i++){
-    fscanf(fp, "%le", &x[i]);
+  for(int i=0; i<mGPU0->nrows; i++){
+    fscanf(fp, "%le", &x_aux[i]);
     //printf("%d %le\n",i, x[i]);
   }
 
-  for(int i=0; i<mGPU->nrows; i++){
-    fscanf(fp, "%le", &tempv[i]);
+  for(int i=0; i<mGPU0->nrows; i++){
+    fscanf(fp, "%le", &tempv_aux[i]);
     //printf("%d %le\n",i, tempv[i]);
   }
 
@@ -712,7 +712,41 @@ void BCG (){
   }
 */
 
-  //mGPU0->n_cells=mGPU0->n_cells*n_cells_multiplier;
+  int *jA=(int*)malloc(mGPU0->nnz*n_cells_multiplier*sizeof(int));
+  int *iA=(int*)malloc((mGPU0->nrows*n_cells_multiplier+1)*sizeof(int));
+  double *A=(double*)malloc(mGPU0->nnz*n_cells_multiplier*sizeof(double));
+  double *diag=(double*)malloc(mGPU0->nrows*n_cells_multiplier*sizeof(double));
+  double *x=(double*)malloc(mGPU0->nrows*n_cells_multiplier*sizeof(double));
+  double *tempv=(double*)malloc(mGPU0->nrows*n_cells_multiplier*sizeof(double));
+
+  iA[0]=0;
+  //printf("iA_aux[mGPU->nrows] %d mGPU->nrows %d\n",iA_aux[mGPU->nrows],mGPU->nrows);
+  for(int i=0; i<n_cells_multiplier; i++){
+    memcpy(jA+i*mGPU0->nnz, jA_aux, mGPU0->nnz*sizeof(int));
+    memcpy(A+i*mGPU0->nnz, A_aux, mGPU0->nnz*sizeof(double));
+    memcpy(diag+i*mGPU0->nrows, diag_aux, mGPU0->nrows*sizeof(double));
+    memcpy(x+i*mGPU0->nrows, x_aux, mGPU0->nrows*sizeof(double));
+    memcpy(tempv+i*mGPU0->nrows, tempv_aux, mGPU0->nrows*sizeof(double));
+
+    for(int j=1; j<mGPU0->nrows+1; j++) {
+      iA[j + i * mGPU0->nrows] = iA_aux[j] + iA_aux[mGPU0->nrows] * i;
+      //printf("%d ",iA[j + i * mGPU->nrows]);
+    }
+    /*
+    for(int j=0; j<mGPU->nrows; j++) {
+      printf("%le ",tempv[j + i * mGPU->nrows]);
+    }
+    printf("\n");
+     */
+  }
+
+  //mGPU->n_cells=mGPU->n_cells*n_cells_multiplier;
+  //mGPU->nnz=mGPU->nnz*n_cells_multiplier;
+  //mGPU->nrows=mGPU->nrows*n_cells_multiplier;
+
+  mGPU0->n_cells=mGPU->n_cells*n_cells_multiplier;
+  mGPU0->nnz=mGPU->nnz*n_cells_multiplier;
+  mGPU0->nrows=mGPU->nrows*n_cells_multiplier;
 
   int offset_nnz = 0;
   int offset_nrows = 0;

@@ -9,8 +9,6 @@ INCLUDE(${PROJECT_SOURCE_DIR}/data/CMakeLists.txt)
 set(STD_CUDA_FLAGS "-lineinfo -arch=compute_70 -code=sm_70 -dc --compiler-options '-fPIC'")
 #set(STD_CUDA_FLAGS "-lineinfo -arch=compute_70 -code=sm_70 -dc --compiler-options '-fPIC -lcudart -lcublas -lcusolver -lcudadevrt -lcusparse_static -lculibos -lpthread -ldl'")
 
-add_compile_definitions(SCALE=100000 NUM_DEVICES=4)
-
 set(CAMP_CUDA_SRC libsolv.cu)
 set_source_files_properties(${CAMP_CUDA_SRC} PROPERTIES COMPILE_FLAGS
         ${STD_CUDA_FLAGS})

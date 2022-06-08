@@ -13,14 +13,6 @@
 #include "libsolv.h"
 #include "cuda_structs.h"
 
-#ifndef SCALE
-#define SCALE 1
-#endif
-
-#ifndef NUM_DEVICES
-#define NUM_DEVICES 1
-#endif
-
 #define CAMP_DEBUG_GPU
 
 const int N = 16;
@@ -642,15 +634,14 @@ void BCG (){
 
   //ModelDataGPU mGPU_object;
   //ModelDataGPU *mGPU = &mGPU_object;
-
   int device = 0;
   int nDevices = 4;
   int n_cells_multiplier = 100;
 
-  ModelDataGPU *mGPUs = (ModelDataGPU *)malloc(NUM_DEVICES * sizeof(ModelDataGPU));
+  ModelDataGPU *mGPUs = (ModelDataGPU *)malloc(nDevices * sizeof(ModelDataGPU));
   ModelDataGPU *mGPU = &mGPUs[0];
-  ModelDataGPU original_object;
-  ModelDataGPU *original_data = &original_object;
+  ModelDataGPU mGPU0_object;
+  ModelDataGPU *mGPU0 = &mGPU0_object;
 
   FILE *fp;
   fp = fopen("confBCG.txt", "r");
@@ -710,16 +701,11 @@ void BCG (){
 
   fclose(fp);
 
-  for(int s=1;s<SCALE;s++){
-    memcpy(diag+(s*original_data->nrows),diag,original_data->nrows*sizeof(double));
-    memcpy(x+(s*original_data->nrows),x,original_data->nrows*sizeof(double));
-    memcpy(tempv+(s*original_data->nrows),tempv,original_data->nrows*sizeof(double));
-  }
   /*
   for(int icell=0; icell<mGPU->n_cells; icell++){
     printf("cell %d:\n",icell);
-    for(int i=0; i<mGPU->nrows/original_data->n_cells+1; i++){
-      printf("%d ", iA[i+icell*(mGPU->nrows/original_data->n_cells)]);
+    for(int i=0; i<mGPU->nrows/mGPU0->n_cells+1; i++){
+      printf("%d ", iA[i+icell*(mGPU->nrows/mGPU0->n_cells)]);
       //printf("%d %d\n",i, iA[i]);
     }
     printf("\n");
@@ -790,12 +776,12 @@ void BCG (){
     cudaMalloc((void **) &mGPU->dx, mGPU->nrows * sizeof(double));
     cudaMalloc((void **) &mGPU->dtempv, mGPU->nrows * sizeof(double));
 
-    cudaMemcpyAsync(mGPU->djA, jA, original_data->nnz * sizeof(int), cudaMemcpyHostToDevice, 0);
-    cudaMemcpyAsync(mGPU->diA, iA, (original_data->nrows + 1) * sizeof(int), cudaMemcpyHostToDevice, 0);
-    cudaMemcpyAsync(mGPU->dA, A, original_data->nnz * sizeof(double), cudaMemcpyHostToDevice);
+    cudaMemcpyAsync(mGPU->djA, jA, mGPU->nnz * sizeof(int), cudaMemcpyHostToDevice, 0);
+    cudaMemcpyAsync(mGPU->diA, iA, (mGPU->nrows + 1) * sizeof(int), cudaMemcpyHostToDevice, 0);
+    cudaMemcpyAsync(mGPU->dA, A+offset_nnz, mGPU->nnz * sizeof(double), cudaMemcpyHostToDevice);
     cudaMemcpyAsync(mGPU->ddiag, diag+offset_nrows, mGPU->nrows * sizeof(double), cudaMemcpyHostToDevice, 0);
     cudaMemcpyAsync(mGPU->dx, x+offset_nrows, mGPU->nrows * sizeof(double), cudaMemcpyHostToDevice, 0);
-    cudaMemcpyAsync(mGPU->dtempv, tempv+offset_nrows, mGPU->nrows * sizeof(double), cudaMemcpyHostToDevice, 0);
+    HANDLE_ERROR(cudaMemcpyAsync(mGPU->dtempv, tempv+offset_nrows, mGPU->nrows * sizeof(double), cudaMemcpyHostToDevice, 0));
 
     //Auxiliary vectors ("private")
     double **dr0 = &mGPU->dr0;
@@ -828,35 +814,35 @@ void BCG (){
 
     solveGPU_block(mGPU);
 
-    //HANDLE_ERROR(cudaMemcpyAsync(jA, mGPU->djA, original_data->nnz * sizeof(int), cudaMemcpyDeviceToHost, 0));
-    //cudaMemcpyAsync(iA, mGPU->diA, (original_data->nrows + 1) * sizeof(int), cudaMemcpyDeviceToHost, 0);
-    //cudaMemcpyAsync(A, mGPU->dA, original_data->nnz * sizeof(double), cudaMemcpyDeviceToHost, 0);
+    HANDLE_ERROR(cudaMemcpyAsync(jA, mGPU->djA, mGPU->nnz * sizeof(int), cudaMemcpyDeviceToHost, 0));
+    cudaMemcpyAsync(iA, mGPU->diA, (mGPU->nrows + 1) * sizeof(int), cudaMemcpyDeviceToHost, 0);
+    cudaMemcpyAsync(A+offset_nnz, mGPU->dA, mGPU->nnz * sizeof(double), cudaMemcpyDeviceToHost, 0);
     cudaMemcpyAsync(diag+offset_nrows, mGPU->ddiag, mGPU->nrows * sizeof(double), cudaMemcpyDeviceToHost, 0);
     cudaMemcpyAsync(x+offset_nrows, mGPU->dx, mGPU->nrows * sizeof(double), cudaMemcpyDeviceToHost, 0);
     cudaMemcpyAsync(tempv+offset_nrows, mGPU->dtempv, mGPU->nrows * sizeof(double), cudaMemcpyDeviceToHost, 0);
 
-    //offset_nnz += mGPU->nnz;
+    offset_nnz += mGPU->nnz;
     offset_nrows += mGPU->nrows;
   }
-  
+  mGPU = mGPU0;
 
-  double *A2=(double*)malloc(original_data->nnz*sizeof(double));
-  double *x2=(double*)malloc(original_data->nrows*sizeof(double));
-  double *tempv2=(double*)malloc(original_data->nrows*sizeof(double));
+  double *A2=(double*)malloc(mGPU->nnz*sizeof(double));
+  double *x2=(double*)malloc(mGPU->nrows*sizeof(double));
+  double *tempv2=(double*)malloc(mGPU->nrows*sizeof(double));
 
   fp = fopen("outBCG.txt", "r");
 
-  for(int i=0; i<original_data->nnz; i++){
+  for(int i=0; i<mGPU->nnz; i++){
     fscanf(fp, "%le", &A2[i]);
     //printf("%d %le\n",i, A[i]);
   }
 
-  for(int i=0; i<original_data->nrows; i++){
+  for(int i=0; i<mGPU->nrows; i++){
     fscanf(fp, "%le", &x2[i]);
     //printf("%d %le\n",i, x[i]);
   }
 
-  for(int i=0; i<original_data->nrows; i++){
+  for(int i=0; i<mGPU->nrows; i++){
     fscanf(fp, "%le", &tempv2[i]);
     //printf("%d %le\n",i, tempv[i]);
   }
@@ -864,20 +850,15 @@ void BCG (){
   fclose(fp);
 
   int flag=1;
-  int s;
-  for(s=0;s<SCALE;s++)
-  {
-    if(compare_doubles(A2,A,original_data->nnz,"A2")==0) flag=0;
-    if(compare_doubles(x2,x+(s*original_data->nrows),original_data->nrows,"x2")==0)  flag=0;
-    if(compare_doubles(tempv2,tempv+(s*original_data->nrows),original_data->nrows,"tempv2")==0)  flag=0;
-    if(flag==0)
-      break;
-  }
+  if(compare_doubles(A2,A,mGPU->nnz,"A2")==0) flag=0;
+  if(compare_doubles(x2,x,mGPU->nrows,"x2")==0)  flag=0;
+  if(compare_doubles(tempv2,tempv,mGPU->nrows,"tempv2")==0)  flag=0;
 
   if(flag==0)
     printf("FAIL\n");
   else
     printf("SUCCESS\n");
+
 }
 
 int main()

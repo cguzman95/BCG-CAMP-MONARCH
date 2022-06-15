@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <ProjectGuid>{02C21D77-159A-4D31-AAE9-3F113D55EA59}</ProjectGuid>
+    <CudaToolkitCustomDir>
+    </CudaToolkitCustomDir>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\CUDA 11.6.props" />
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ExecutablePath>$(VC_ExecutablePath_x64);$(CommonExecutablePath);C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6\include</ExecutablePath>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6\include;$(IncludePath)</IncludePath>
+    <ReferencePath>$(VC_ReferencesPath_x64);</ReferencePath>
+    <LibraryPath>$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64)</LibraryPath>
+    <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(Platform)\$(Configuration)\</IntDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ExecutablePath>$(VC_ExecutablePath_x64);$(CommonExecutablePath);C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6\include</ExecutablePath>
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6\include;$(IncludePath)</IncludePath>
+    <ReferencePath>$(VC_ReferencesPath_x64);</ReferencePath>
+    <LibraryPath>$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64)</LibraryPath>
+    <OutDir>$(SolutionDir)$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(Platform)\$(Configuration)\</IntDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6\include;$(IncludePath)</IncludePath>
+    <ExecutablePath>$(VC_ExecutablePath_x64);$(CommonExecutablePath);C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6\include</ExecutablePath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6\include;$(IncludePath)</IncludePath>
+    <ExecutablePath>$(VC_ExecutablePath_x64);$(CommonExecutablePath);C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.6\include</ExecutablePath>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <CudaCompile>
+      <TargetMachinePlatform>64</TargetMachinePlatform>
+      <PtxAsOptionV>false</PtxAsOptionV>
+      <Defines>WIN32</Defines>
+      <CodeGeneration>compute_70,sm_70;compute_75,sm_75;compute_80,sm_80;compute_86,sm_86;</CodeGeneration>
+      <Include>./;../Common;%(Include)</Include>
+      <AdditionalOptions>-Xcompiler "/wd 4819"  --threads 0 %(AdditionalOptions)</AdditionalOptions>
+      <GenerateRelocatableDeviceCode>true</GenerateRelocatableDeviceCode>
+    </CudaCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <CudaCompile>
+      <TargetMachinePlatform>64</TargetMachinePlatform>
+      <PtxAsOptionV>false</PtxAsOptionV>
+      <Defines>WIN32</Defines>
+      <CodeGeneration>compute_70,sm_70;compute_75,sm_75;compute_80,sm_80;compute_86,sm_86;</CodeGeneration>
+      <Include>./;../Common;%(Include)</Include>
+      <AdditionalOptions>-Xcompiler "/wd 4819"  --threads 0 %(AdditionalOptions)</AdditionalOptions>
+      <GenerateRelocatableDeviceCode>true</GenerateRelocatableDeviceCode>
+    </CudaCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <CudaCompile>
+      <TargetMachinePlatform>64</TargetMachinePlatform>
+      <PtxAsOptionV>false</PtxAsOptionV>
+      <Defines>WIN32</Defines>
+      <CodeGeneration>compute_70,sm_70;compute_75,sm_75;compute_80,sm_80;compute_86,sm_86;</CodeGeneration>
+      <Include>./;../Common;%(Include)</Include>
+      <AdditionalOptions>-Xcompiler "/wd 4819"  --threads 0 %(AdditionalOptions)</AdditionalOptions>
+      <GenerateRelocatableDeviceCode>true</GenerateRelocatableDeviceCode>
+    </CudaCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <CudaCompile>
+      <TargetMachinePlatform>64</TargetMachinePlatform>
+      <PtxAsOptionV>false</PtxAsOptionV>
+      <Defines>WIN32</Defines>
+      <CodeGeneration>compute_70,sm_70;compute_75,sm_75;compute_80,sm_80;compute_86,sm_86;</CodeGeneration>
+      <Include>./;../Common;%(Include)</Include>
+      <AdditionalOptions>-Xcompiler "/wd 4819"  --threads 0 %(AdditionalOptions)</AdditionalOptions>
+      <GenerateRelocatableDeviceCode>true</GenerateRelocatableDeviceCode>
+    </CudaCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <Text Include="CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include=".gitignore" />
+    <None Include="CMakeSettings.json" />
+    <None Include="compile.power9.sh" />
+    <None Include="LICENSE" />
+    <None Include="make.power9.sh" />
+    <None Include="out\build\x64-Debug\CMakeFiles\3.22.22040401-MSVC_2\CMakeDetermineCompilerABI_C.bin" />
+    <None Include="out\build\x64-Debug\CMakeFiles\3.22.22040401-MSVC_2\CMakeDetermineCompilerABI_CUDA.bin" />
+    <None Include="out\build\x64-Debug\CMakeFiles\3.22.22040401-MSVC_2\CMakeDetermineCompilerABI_CXX.bin" />
+    <None Include="README.md" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="cuda_structs.h" />
+    <ClInclude Include="libsolv.h" />
+    <ClInclude Include="out\build\x64-Debug\CMakeFiles\ShowIncludes\foo.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <CudaCompile Include="File.cu" />
+    <CudaCompile Include="libsolv.cu" />
+    <CudaCompile Include="test.cu" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="OpenAcc\test.cpp" />
+    <ClCompile Include="OpenMP_target_spread\test.cpp" />
+    <ClCompile Include="out\build\x64-Debug\CMakeFiles\3.22.22040401-MSVC_2\CompilerIdCUDA\tmp\a_dlink.fatbin.c" />
+    <ClCompile Include="out\build\x64-Debug\CMakeFiles\3.22.22040401-MSVC_2\CompilerIdCUDA\tmp\a_dlink.reg.c" />
+    <ClCompile Include="out\build\x64-Debug\CMakeFiles\3.22.22040401-MSVC_2\CompilerIdCUDA\tmp\CMakeCUDACompilerId.cudafe1.c" />
+    <ClCompile Include="out\build\x64-Debug\CMakeFiles\3.22.22040401-MSVC_2\CompilerIdCUDA\tmp\CMakeCUDACompilerId.cudafe1.cpp" />
+    <ClCompile Include="out\build\x64-Debug\CMakeFiles\3.22.22040401-MSVC_2\CompilerIdCUDA\tmp\CMakeCUDACompilerId.cudafe1.stub.c" />
+    <ClCompile Include="out\build\x64-Debug\CMakeFiles\3.22.22040401-MSVC_2\CompilerIdCUDA\tmp\CMakeCUDACompilerId.fatbin.c" />
+    <ClCompile Include="out\build\x64-Debug\CMakeFiles\3.22.22040401-MSVC_2\CompilerIdCXX\CMakeCXXCompilerId.cpp" />
+    <ClCompile Include="out\build\x64-Debug\CMakeFiles\3.22.22040401-MSVC_2\CompilerIdC\CMakeCCompilerId.c" />
+    <ClCompile Include="out\build\x64-Debug\CMakeFiles\ShowIncludes\main.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <Manifest Include="out\build\x64-Debug\CMakeFiles\test.dir\embed.manifest" />
+    <Manifest Include="out\build\x64-Debug\CMakeFiles\test.dir\intermediate.manifest" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="out\build\x64-Debug\CMakeFiles\test.dir\manifest.rc" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\CUDA 11.6.targets" />
+  </ImportGroup>
+</Project>

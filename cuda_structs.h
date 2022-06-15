@@ -8,6 +8,17 @@
 
 #define CAMP_DEBUG_GPU
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include <cublas_v2.h>
+#include <cuda_runtime.h>
+#include <cusparse.h>
+
+
+
+
 typedef struct
 {
   //Init variables ("public")

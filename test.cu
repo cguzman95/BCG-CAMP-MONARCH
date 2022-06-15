@@ -18,6 +18,7 @@
 #include "cuda_structs.h"
 
 #define CAMP_DEBUG_GPU
+#define DEBUG_BCG_COUNTER
 
 const int N = 16;
 const int blocksize = 16;
@@ -250,7 +251,7 @@ void dvcheck_input_gpud(double* x, int len, const char* s)
 //Algorithm: Biconjugate gradient
 __global__
 void solveBcgCuda(
-    double* dA, int* djA, int* diA, double* dx, double* dtempv //Input data
+    ModelDataGPU md_object, double* dA, int* djA, int* diA, double* dx, double* dtempv //Input data
     , int nrows, int blocks, int n_shr_empty, int maxIt, int mattype
     , int n_cells, double tolmax, double* ddiag //Init variables
     , double* dr0, double* dr0h, double* dn0, double* dp0
@@ -263,6 +264,15 @@ void solveBcgCuda(
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     unsigned int tid = threadIdx.x;
     int active_threads = nrows;
+
+#ifdef DEBUG_BCG_COUNTER
+
+    ModelDataGPU* md = &md_object;
+    ModelDataVariable *mdvo = md_object.mdvo;
+    ModelDataVariable dmdv_object = *md_object.mdv;
+    ModelDataVariable* dmdv = &dmdv_object; //slowdowns by ~20%
+
+#endif
 
     //if(tid==0)printf("blockDim.x %d\n",blockDim.x);
 
@@ -493,27 +503,20 @@ void solveBcgCuda(
         //if(it>=maxIt-1)
         //  dvcheck_input_gpud(dr0,nrows,999);
         //dvcheck_input_gpud(dr0,nrows,k++);
-/*
 
-#ifdef CAMP_DEBUG_GPU
-    if(tid==0) {
-      if(last_blockN==1){
-        if(*it_pointer-it>*it_pointer)*it_pointer = it;
-    }
-    else{
-      *it_pointer = it;
-      }
-    //printf("it_pointer %d\n",*it_pointer);
-    }
+
+#ifdef DEBUG_BCG_COUNTER
+        dmdv->counterBCGInternal = it; //slowdown by 50%
+        *mdvo = *dmdv;
 #endif
-*/
+
 
     }
 
 }
 
 void solveGPU_block_thr(int blocks, int threads_block, int n_shr_memory, int n_shr_empty, int offset_cells,
-    ModelDataGPU* mGPU, int last_blockN)
+    ModelDataGPU* mGPU, int last_blockN, itsolver *bicg)
 {
 
     //Init variables ("public")
@@ -556,13 +559,12 @@ void solveGPU_block_thr(int blocks, int threads_block, int n_shr_memory, int n_s
     int it = 0;
     solveBcgCuda << < blocks, threads_block, n_shr_memory * sizeof(double) >> >
         //solveBcgCuda << < blocks, threads_block, threads_block * sizeof(double) >> >
-        (dA, djA, diA, dx, dtempv, nrows, blocks, n_shr_empty, maxIt, mattype, n_cells,
+        (*mGPU, dA, djA, diA, dx, dtempv, nrows, blocks, n_shr_empty, maxIt, mattype, n_cells,
             tolmax, ddiag, dr0, dr0h, dn0, dp0, dt, ds, dAx2, dy, dz
 #ifdef CAMP_DEBUG_GPU
             , &it, last_blockN
 #endif
             );
-
 
 }
 
@@ -570,7 +572,7 @@ void solveGPU_block_thr(int blocks, int threads_block, int n_shr_memory, int n_s
 //Algorithm: Biconjugate gradient
 // dx: Input and output RHS
 // dtempv: Input preconditioner RHS
-void solveGPU_block(ModelDataGPU* mGPU)
+void solveGPU_block(ModelDataGPU* mGPU, itsolver *bicg)
 {
 
 #ifdef DEBUG_SOLVEBCGCUDA
@@ -631,7 +633,7 @@ void solveGPU_block(ModelDataGPU* mGPU)
 #endif
 
     solveGPU_block_thr(blocks, threads_block, max_threads_block, n_shr_empty, offset_cells,
-        mGPU, last_blockN);
+        mGPU, last_blockN,bicg);
 
 }
 
@@ -640,12 +642,20 @@ void BCG() {
     //ModelDataGPU mGPU_object;
     //ModelDataGPU *mGPU = &mGPU_object;
     int nDevices = 1;
-    int n_cells_multiplier = 1000;
+    int n_cells_multiplier = 10000; //n_cells are 10 from confBCG;
 
     ModelDataGPU* mGPUs = (ModelDataGPU*)malloc(nDevices * sizeof(ModelDataGPU));
     ModelDataGPU* mGPU = &mGPUs[0];
     ModelDataGPU mGPU0_object;
     ModelDataGPU* mGPU0 = &mGPU0_object;
+
+    itsolver bicg_ptr;
+    itsolver* bicg = &bicg_ptr;
+
+    bicg->counterBiConjGrad = 0;
+    bicg->timeBiConjGrad = 0;
+    cudaEventCreate(&bicg->startBCG);
+    cudaEventCreate(&bicg->stopBCG);
 
     FILE* fp;
     fp = fopen("confBCG.txt", "r");
@@ -785,6 +795,11 @@ void BCG() {
 
         //printf("mGPU->nrows%d\n",mGPU->nrows);
 
+        mGPU->mdvCPU.counterBCGInternal = 0;
+        cudaMalloc((void**)&mGPU->mdv, sizeof(ModelDataVariable));
+        cudaMalloc((void**)&mGPU->mdvo, sizeof(ModelDataVariable));
+        cudaMemcpyAsync(mGPU->mdv, &mGPU->mdvCPU, sizeof(ModelDataVariable), cudaMemcpyHostToDevice, 0);
+
         cudaMalloc((void**)&mGPU->djA, mGPU->nnz * sizeof(int));
         cudaMalloc((void**)&mGPU->diA, (mGPU->nrows + 1) * sizeof(int));
         cudaMalloc((void**)&mGPU->dA, mGPU->nnz * sizeof(double));
@@ -828,7 +843,19 @@ void BCG() {
         mGPU->threads = prop.maxThreadsPerBlock;
         mGPU->blocks = (mGPU->nrows + mGPU->threads - 1) / mGPU->threads;
 
-        solveGPU_block(mGPU);
+        cudaEventRecord(bicg->startBCG);
+
+        solveGPU_block(mGPU,bicg);
+
+        cudaEventRecord(bicg->stopBCG);
+        cudaEventSynchronize(bicg->stopBCG);
+        float msBiConjGrad = 0.0;
+        cudaEventElapsedTime(&msBiConjGrad, bicg->startBCG, bicg->stopBCG);
+        bicg->timeBiConjGrad += msBiConjGrad / 1000;
+
+        cudaMemcpy(&mGPU->mdvCPU, mGPU->mdvo, sizeof(ModelDataVariable), cudaMemcpyDeviceToHost);
+
+        mGPU->mdvCPU.counterBCGInternal++;
 
         HANDLE_ERROR(cudaMemcpyAsync(jA, mGPU->djA, mGPU->nnz * sizeof(int), cudaMemcpyDeviceToHost, 0));
         cudaMemcpyAsync(iA, mGPU->diA, (mGPU->nrows + 1) * sizeof(int), cudaMemcpyDeviceToHost, 0);
@@ -917,6 +944,11 @@ void BCG() {
         printf("FAIL\n");
     else
         printf("SUCCESS\n");
+
+    printf("timeBiConjGrad %.2e\n",bicg->timeBiConjGrad);
+#ifdef DEBUG_BCG_COUNTER
+    printf("counterBCGInternal %d\n",mGPU->mdvCPU.counterBCGInternal);
+#endif
 
 }
 

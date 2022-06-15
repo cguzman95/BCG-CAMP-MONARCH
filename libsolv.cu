@@ -6,20 +6,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
 #include <cusparse.h>
-
-
-
 #include<iostream>
 #include<cuda.h>
 #include<cuda_runtime.h>
 #include<cuda_runtime_api.h>
 #include "device_launch_parameters.h"
 #include <device_functions.h>
-
 
 #include "libsolv.h"
 

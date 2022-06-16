@@ -17,6 +17,14 @@
 #include "libsolv.h"
 #include "cuda_structs.h"
 
+#ifndef SCALE
+#define SCALE 1
+#endif
+
+#ifndef NUM_DEVICES
+#define NUM_DEVICES 1
+#endif
+
 #define CAMP_DEBUG_GPU
 #define DEBUG_BCG_COUNTER
 
@@ -641,8 +649,8 @@ void BCG() {
 
     //ModelDataGPU mGPU_object;
     //ModelDataGPU *mGPU = &mGPU_object;
-    int nDevices = 1;
-    int n_cells_multiplier = 10000; //n_cells are 10 from confBCG;
+    int nDevices = NUM_DEVICES;
+    int n_cells_multiplier = SCALE; //n_cells are 10 from confBCG;
 
     ModelDataGPU* mGPUs = (ModelDataGPU*)malloc(nDevices * sizeof(ModelDataGPU));
     ModelDataGPU* mGPU = &mGPUs[0];
@@ -913,22 +921,7 @@ void BCG() {
     //printf("mGPU0->nrows %d\n",mGPU0->nrows);
 
     for (int i = 0; i < n_cells_multiplier; i++) {
-        memcpy(A2 + i * mGPU0->nnz, A2_aux, mGPU0->nnz * sizeof(double));
         memcpy(x2 + i * mGPU0->nrows, x2_aux, mGPU0->nrows * sizeof(double));
-        memcpy(tempv2 + i * mGPU0->nrows, tempv2_aux, mGPU0->nrows * sizeof(double));
-
-        /*
-        for(int j=0; j<mGPU0->nrows; j++) {
-          printf("%le ",x2[j + i * mGPU0->nrows]);
-        }
-        printf("\n");
-
-        for(int j=0; j<mGPU0->nrows; j++) {
-          printf("%le ",x[j + i * mGPU0->nrows]);
-        }
-        printf("\n");
-    */
-
     }
 
     mGPU0->n_cells = mGPU0->n_cells * n_cells_multiplier;
@@ -936,14 +929,10 @@ void BCG() {
     mGPU0->nrows = mGPU0->nrows * n_cells_multiplier;
 
     int flag = 1;
-    if (compare_doubles(A2, A, mGPU0->nnz, "A2") == 0) flag = 0;
-    if (compare_doubles(x2, x, mGPU0->nrows, "x2") == 0)  flag = 0;
-    if (compare_doubles(tempv2, tempv, mGPU0->nrows, "tempv2") == 0)  flag = 0;
-
-    if (flag == 0)
-        printf("FAIL\n");
+    if (compare_doubles(x2, x, mGPU0->nrows, "x2") == 0)
+        printf("FAIL with size %d\n", mGPU0->nrows);      
     else
-        printf("SUCCESS\n");
+        printf("SUCCESS with size %d\n", mGPU0->nrows);
 
     printf("timeBiConjGrad %.2e\n",bicg->timeBiConjGrad);
 #ifdef DEBUG_BCG_COUNTER

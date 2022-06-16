@@ -415,21 +415,18 @@ void BCG (){
 
   fclose(fp);
 
-  int flag=1;
   int s;
   for(s=0;s<SCALE;s++)
   {
-    if(compare_doubles(A2,A,pre_nnz,"A2")==0) flag=0;
-    if(compare_doubles(x2,dx+(s*pre_nrows),pre_nrows,"x2")==0)  flag=0;
-    if(compare_doubles(tempv2,tempv+(s*pre_nrows),pre_nrows,"tempv2")==0)  flag=0;
-    if(flag==0)
+    if(compare_doubles(x2,dx+(s*pre_nrows),pre_nrows,"x2")==0){
       break;
+    }
   }
 
-  if(flag==0)
-    printf("FAIL_spread at %d\n",s);
+  if(s<SCALE)
+    printf("FAIL at section %d with size %d\n", s, pre_nrows*SCALE);
   else
-    printf("SUCCESS_spread\n");
+    printf("SUCCESS with size %d\n", pre_nrows*SCALE);
   
   free(tempv2);
   free(x2);

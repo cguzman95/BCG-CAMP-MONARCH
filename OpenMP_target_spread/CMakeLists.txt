@@ -23,7 +23,7 @@ include_directories(${LLVM}/projects/openmp/runtime/src)
 
 # strong scaling
 #add_compile_definitions(SCALE=100000 NUM_DEVICES=2 DEVICE_LIST=0,1)
-add_compile_definitions(SCALE=100000 NUM_DEVICES=4 DEVICE_LIST=0,1,2,3)
+add_compile_definitions(SCALE=10000 NUM_DEVICES=4 DEVICE_LIST=0,1,2,3)
 
 
 set(CMAKE_CXX_FLAGS "${LLVM_IR_FLAGS} -Wall -g -fopenmp -fopenmp-targets=${OMPTARGETS} --libomptarget-nvptx-bc-path=${LLVM}/projects/openmp/libomptarget")

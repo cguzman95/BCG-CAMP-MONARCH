@@ -18,7 +18,7 @@
 #include "cuda_structs.h"
 
 #define CAMP_DEBUG_GPU
-#define DEBUG_BCG_COUNTER
+//#define DEBUG_BCG_COUNTER
 
 const int N = 16;
 const int blocksize = 16;
@@ -637,11 +637,12 @@ void solveGPU_block(ModelDataGPU* mGPU, itsolver *bicg)
 
 }
 
+
 void BCG() {
 
     //ModelDataGPU mGPU_object;
     //ModelDataGPU *mGPU = &mGPU_object;
-    int nDevices = 1;
+    int nDevices = 4;
     int n_cells_multiplier = 10000; //n_cells are 10 from confBCG;
 
     ModelDataGPU* mGPUs = (ModelDataGPU*)malloc(nDevices * sizeof(ModelDataGPU));
@@ -772,9 +773,82 @@ void BCG() {
     mGPU0->nnz = mGPU0->nnz * n_cells_multiplier;
     mGPU0->nrows = mGPU0->nrows * n_cells_multiplier;
 
-    int offset_nnz = 0;
-    int offset_nrows = 0;
-    int remainder = mGPU0->n_cells % nDevices;
+  int offset_nnz = 0;
+  int offset_nrows = 0;
+  int remainder = mGPU0->n_cells % nDevices;
+  for (int iDevice = 0; iDevice < nDevices; iDevice++) {
+    cudaSetDevice(iDevice);
+    mGPU = &mGPUs[iDevice];
+
+    int n_cells = int(mGPU0->n_cells / nDevices);
+    if (remainder != 0 && iDevice == 0) {
+      //printf("REMAINDER  nDevicesMODn_cells!=0\n");
+      //printf("remainder %d n_cells_total %d nDevices %d n_cells %d\n",remainder,mGPU0->n_cells,nDevices,n_cells);
+      n_cells += remainder;
+    }
+
+    mGPU->n_cells = n_cells;
+    mGPU->nrows = mGPU0->nrows / mGPU0->n_cells * mGPU->n_cells;
+    mGPU->nnz = mGPU0->nnz / mGPU0->n_cells * mGPU->n_cells;
+    mGPU->maxIt = mGPU0->maxIt;
+    mGPU->mattype = mGPU0->mattype;
+    mGPU->tolmax = mGPU0->tolmax;
+
+    //printf("mGPU->nrows%d\n",mGPU->nrows);
+
+#ifdef DEBUG_BCG_COUNTER
+    mGPU->mdvCPU.counterBCGInternal = 0;
+    cudaMalloc((void**)&mGPU->mdv, sizeof(ModelDataVariable));
+    cudaMalloc((void**)&mGPU->mdvo, sizeof(ModelDataVariable));
+    cudaMemcpyAsync(mGPU->mdv, &mGPU->mdvCPU, sizeof(ModelDataVariable), cudaMemcpyHostToDevice, 0);
+#endif
+
+    cudaMalloc((void**)&mGPU->djA, mGPU->nnz * sizeof(int));
+    cudaMalloc((void**)&mGPU->diA, (mGPU->nrows + 1) * sizeof(int));
+    cudaMalloc((void**)&mGPU->dA, mGPU->nnz * sizeof(double));
+    cudaMalloc((void**)&mGPU->ddiag, mGPU->nrows * sizeof(double));
+    cudaMalloc((void**)&mGPU->dx, mGPU->nrows * sizeof(double));
+    cudaMalloc((void**)&mGPU->dtempv, mGPU->nrows * sizeof(double));
+
+    //Auxiliary vectors ("private")
+    double** dr0 = &mGPU->dr0;
+    double** dr0h = &mGPU->dr0h;
+    double** dn0 = &mGPU->dn0;
+    double** dp0 = &mGPU->dp0;
+    double** dt = &mGPU->dt;
+    double** ds = &mGPU->ds;
+    double** dAx2 = &mGPU->dAx2;
+    double** dy = &mGPU->dy;
+    double** dz = &mGPU->dz;
+    double** daux = &mGPU->daux;
+
+    int nrows = mGPU->nrows;
+    cudaMalloc(dr0, nrows * sizeof(double));
+    cudaMalloc(dr0h, nrows * sizeof(double));
+    cudaMalloc(dn0, nrows * sizeof(double));
+    cudaMalloc(dp0, nrows * sizeof(double));
+    cudaMalloc(dt, nrows * sizeof(double));
+    cudaMalloc(ds, nrows * sizeof(double));
+    cudaMalloc(dAx2, nrows * sizeof(double));
+    cudaMalloc(dy, nrows * sizeof(double));
+    cudaMalloc(dz, nrows * sizeof(double));
+    cudaMalloc(daux, nrows * sizeof(double));
+
+    cudaDeviceProp prop;
+    cudaGetDeviceProperties(&prop, iDevice);
+    mGPU->threads = prop.maxThreadsPerBlock;
+    mGPU->blocks = (mGPU->nrows + mGPU->threads - 1) / mGPU->threads;
+
+    offset_nnz += mGPU->nnz;
+    offset_nrows += mGPU->nrows;
+  }
+
+
+    offset_nnz = 0;
+    offset_nrows = 0;
+    remainder = mGPU0->n_cells % nDevices;
+    cudaSetDevice(0);
+    cudaEventRecord(bicg->startBCG);
     for (int iDevice = 0; iDevice < nDevices; iDevice++) {
         cudaSetDevice(iDevice);
         mGPU = &mGPUs[iDevice];
@@ -795,18 +869,6 @@ void BCG() {
 
         //printf("mGPU->nrows%d\n",mGPU->nrows);
 
-        mGPU->mdvCPU.counterBCGInternal = 0;
-        cudaMalloc((void**)&mGPU->mdv, sizeof(ModelDataVariable));
-        cudaMalloc((void**)&mGPU->mdvo, sizeof(ModelDataVariable));
-        cudaMemcpyAsync(mGPU->mdv, &mGPU->mdvCPU, sizeof(ModelDataVariable), cudaMemcpyHostToDevice, 0);
-
-        cudaMalloc((void**)&mGPU->djA, mGPU->nnz * sizeof(int));
-        cudaMalloc((void**)&mGPU->diA, (mGPU->nrows + 1) * sizeof(int));
-        cudaMalloc((void**)&mGPU->dA, mGPU->nnz * sizeof(double));
-        cudaMalloc((void**)&mGPU->ddiag, mGPU->nrows * sizeof(double));
-        cudaMalloc((void**)&mGPU->dx, mGPU->nrows * sizeof(double));
-        cudaMalloc((void**)&mGPU->dtempv, mGPU->nrows * sizeof(double));
-
         cudaMemcpyAsync(mGPU->djA, jA, mGPU->nnz * sizeof(int), cudaMemcpyHostToDevice, 0);
         cudaMemcpyAsync(mGPU->diA, iA, (mGPU->nrows + 1) * sizeof(int), cudaMemcpyHostToDevice, 0);
         cudaMemcpyAsync(mGPU->dA, A + offset_nnz, mGPU->nnz * sizeof(double), cudaMemcpyHostToDevice);
@@ -814,48 +876,11 @@ void BCG() {
         cudaMemcpyAsync(mGPU->dx, x + offset_nrows, mGPU->nrows * sizeof(double), cudaMemcpyHostToDevice, 0);
         HANDLE_ERROR(cudaMemcpyAsync(mGPU->dtempv, tempv + offset_nrows, mGPU->nrows * sizeof(double), cudaMemcpyHostToDevice, 0));
 
-        //Auxiliary vectors ("private")
-        double** dr0 = &mGPU->dr0;
-        double** dr0h = &mGPU->dr0h;
-        double** dn0 = &mGPU->dn0;
-        double** dp0 = &mGPU->dp0;
-        double** dt = &mGPU->dt;
-        double** ds = &mGPU->ds;
-        double** dAx2 = &mGPU->dAx2;
-        double** dy = &mGPU->dy;
-        double** dz = &mGPU->dz;
-        double** daux = &mGPU->daux;
-
-        int nrows = mGPU->nrows;
-        cudaMalloc(dr0, nrows * sizeof(double));
-        cudaMalloc(dr0h, nrows * sizeof(double));
-        cudaMalloc(dn0, nrows * sizeof(double));
-        cudaMalloc(dp0, nrows * sizeof(double));
-        cudaMalloc(dt, nrows * sizeof(double));
-        cudaMalloc(ds, nrows * sizeof(double));
-        cudaMalloc(dAx2, nrows * sizeof(double));
-        cudaMalloc(dy, nrows * sizeof(double));
-        cudaMalloc(dz, nrows * sizeof(double));
-        cudaMalloc(daux, nrows * sizeof(double));
-
-        cudaDeviceProp prop;
-        cudaGetDeviceProperties(&prop, iDevice);
-        mGPU->threads = prop.maxThreadsPerBlock;
-        mGPU->blocks = (mGPU->nrows + mGPU->threads - 1) / mGPU->threads;
-
-        cudaEventRecord(bicg->startBCG);
-
         solveGPU_block(mGPU,bicg);
 
-        cudaEventRecord(bicg->stopBCG);
-        cudaEventSynchronize(bicg->stopBCG);
-        float msBiConjGrad = 0.0;
-        cudaEventElapsedTime(&msBiConjGrad, bicg->startBCG, bicg->stopBCG);
-        bicg->timeBiConjGrad += msBiConjGrad / 1000;
-
-        cudaMemcpy(&mGPU->mdvCPU, mGPU->mdvo, sizeof(ModelDataVariable), cudaMemcpyDeviceToHost);
-
-        mGPU->mdvCPU.counterBCGInternal++;
+#ifdef DEBUG_BCG_COUNTER
+      cudaMemcpyAsync(&mGPU->mdvCPU, mGPU->mdvo, sizeof(ModelDataVariable), cudaMemcpyDeviceToHost);
+#endif
 
         HANDLE_ERROR(cudaMemcpyAsync(jA, mGPU->djA, mGPU->nnz * sizeof(int), cudaMemcpyDeviceToHost, 0));
         cudaMemcpyAsync(iA, mGPU->diA, (mGPU->nrows + 1) * sizeof(int), cudaMemcpyDeviceToHost, 0);
@@ -868,7 +893,18 @@ void BCG() {
         offset_nrows += mGPU->nrows;
     }
 
+  for (int iDevice = 1; iDevice < nDevices; iDevice++) {
+    cudaSetDevice(iDevice);
     cudaDeviceSynchronize();
+  }
+
+  cudaSetDevice(0);
+  cudaEventRecord(bicg->stopBCG);
+  cudaEventSynchronize(bicg->stopBCG);
+  float msBiConjGrad = 0.0;
+  cudaEventElapsedTime(&msBiConjGrad, bicg->startBCG, bicg->stopBCG);
+  bicg->timeBiConjGrad += msBiConjGrad / 1000;
+
     /*
       for(int icell=0; icell<mGPU0->n_cells; icell++){
         printf("cell %d:\n",icell);

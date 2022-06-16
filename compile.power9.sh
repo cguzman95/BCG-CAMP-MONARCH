@@ -14,4 +14,5 @@ cd build
 cmake ..
 
 make -j 4 VERBOSE=1
+./test
 cd ../..

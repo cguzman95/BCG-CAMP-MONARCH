@@ -7,7 +7,6 @@ enable_language(CUDA)
 INCLUDE(${PROJECT_SOURCE_DIR}/data/CMakeLists.txt)
 
 #-ftz=true --prec-div=false --prec-sqrt=false
-set(STD_CUDA_FLAGS "--ftz=true --prec-div=false --prec-sqrt=false -lineinfo -arch=compute_70 -code=sm_70 -dc")
 #set(STD_CUDA_FLAGS "-lineinfo -arch=compute_70 -code=sm_70 -dc --compiler-options '-fPIC -lcudart -lcublas -lcusolver -lcudadevrt -lcusparse_static -lculibos -lpthread -ldl'")
 
 set(CAMP_CUDA_SRC libsolv.cu)

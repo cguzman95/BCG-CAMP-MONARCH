@@ -899,9 +899,10 @@ void BCG() {
 
         offset_nnz += mGPU->nnz;
         offset_nrows += mGPU->nrows;
+        printf("queued on dev = %d\n", iDevice);
     }
 
-  for (int iDevice = 1; iDevice < nDevices; iDevice++) {
+  for (int iDevice = 0; iDevice < nDevices; iDevice++) {
     cudaSetDevice(iDevice);
     cudaDeviceSynchronize();
   }

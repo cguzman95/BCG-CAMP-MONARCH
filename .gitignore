@@ -274,7 +274,3 @@ TSWLatexianTemp*
 
 # Makeindex log files
 *.lpz
-/.vs
-/Debug
-/out/build/x64-Debug
-/x64

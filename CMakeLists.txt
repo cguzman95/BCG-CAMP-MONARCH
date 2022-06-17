@@ -4,12 +4,9 @@ project(MultiGPUOpenMPCAMP)
 
 enable_language(CUDA)
 
-
 INCLUDE(${PROJECT_SOURCE_DIR}/data/CMakeLists.txt)
 
-add_compile_definitions(SCALE=10000 NUM_DEVICES=4)
-
-set(STD_CUDA_FLAGS "--ftz=true -lineinfo -arch=compute_70 -code=sm_70 -dc") #-ftz=true 
+#-ftz=true --prec-div=false --prec-sqrt=false
 #set(STD_CUDA_FLAGS "-lineinfo -arch=compute_70 -code=sm_70 -dc --compiler-options '-fPIC -lcudart -lcublas -lcusolver -lcudadevrt -lcusparse_static -lculibos -lpthread -ldl'")
 
 set(CAMP_CUDA_SRC libsolv.cu)

@@ -8,8 +8,8 @@ INCLUDE(${PROJECT_SOURCE_DIR}/data/CMakeLists.txt)
 
 add_compile_definitions(SCALE=50000 NUM_DEVICES=4)
 
-#-ftz=true --prec-div=false --prec-sqrt=false
-set(STD_CUDA_FLAGS "-lineinfo -arch=compute_70 -code=sm_70 -dc --compiler-options '-fPIC -lcudart -lcublas -lcusolver -lcudadevrt -lcusparse_static -lculibos -lpthread -ldl'")
+#-ftz=true --prec-div=false --prec-sqrt=false --default-stream per-thread 
+set(STD_CUDA_FLAGS "-lineinfo -arch=compute_70 -code=sm_70 -dc --compiler-options '-fPIC -lcudart -lcublas -lcusolver -lcudadevrt -lcusparse_static -lculibos -lpthread -ldl -lgomp' -Xcompiler -fopenmp")
 
 set(CAMP_CUDA_SRC libsolv.cu)
 set_source_files_properties(${CAMP_CUDA_SRC} PROPERTIES COMPILE_FLAGS
@@ -19,7 +19,7 @@ set_source_files_properties(${CAMP_CUDA_SRC} PROPERTIES CUDA_SOURCE_PROPERTY_FOR
 
 set(CAMP_LIB_SRC ${CAMP_CUDA_SRC})
 add_library(camplib ${CAMP_LIB_SRC})
-target_link_libraries(camplib ${CUDA_LIBRARIES})
+target_link_libraries(camplib ${CUDA_LIBRARIES} "-lgomp")
 set_target_properties(camplib PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 set_target_properties(camplib PROPERTIES CUDA_ARCHITECTURES "70")
 set_target_properties(camplib PROPERTIES

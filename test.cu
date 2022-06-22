@@ -857,9 +857,13 @@ void BCG() {
     remainder = mGPU0->n_cells % nDevices;
     cudaSetDevice(0);
     cudaEventRecord(bicg->startBCG);
+
+    #pragma omp parallel for num_threads(nDevices)
     for (int iDevice = 0; iDevice < nDevices; iDevice++) {
+        int offset_nnz = iDevice*mGPU->nnz;
+        int offset_nrows = iDevice*mGPU->nrows;
         cudaSetDevice(iDevice);
-        mGPU = &mGPUs[iDevice];
+        ModelDataGPU *mGPU = &mGPUs[iDevice];
 
         int n_cells = int(mGPU0->n_cells / nDevices);
         if (remainder != 0 && iDevice == 0) {
@@ -879,7 +883,7 @@ void BCG() {
 
         cudaMemcpyAsync(mGPU->djA, jA, mGPU->nnz * sizeof(int), cudaMemcpyHostToDevice, 0);
         cudaMemcpyAsync(mGPU->diA, iA, (mGPU->nrows + 1) * sizeof(int), cudaMemcpyHostToDevice, 0);
-        cudaMemcpyAsync(mGPU->dA, A + offset_nnz, mGPU->nnz * sizeof(double), cudaMemcpyHostToDevice);
+        cudaMemcpyAsync(mGPU->dA, A + offset_nnz, mGPU->nnz * sizeof(double), cudaMemcpyHostToDevice,0);
         cudaMemcpyAsync(mGPU->ddiag, diag + offset_nrows, mGPU->nrows * sizeof(double), cudaMemcpyHostToDevice, 0);
         cudaMemcpyAsync(mGPU->dx, x + offset_nrows, mGPU->nrows * sizeof(double), cudaMemcpyHostToDevice, 0);
         HANDLE_ERROR(cudaMemcpyAsync(mGPU->dtempv, tempv + offset_nrows, mGPU->nrows * sizeof(double), cudaMemcpyHostToDevice, 0));
@@ -897,15 +901,9 @@ void BCG() {
         cudaMemcpyAsync(x + offset_nrows, mGPU->dx, mGPU->nrows * sizeof(double), cudaMemcpyDeviceToHost, 0);
         cudaMemcpyAsync(tempv + offset_nrows, mGPU->dtempv, mGPU->nrows * sizeof(double), cudaMemcpyDeviceToHost, 0);
 
-        offset_nnz += mGPU->nnz;
-        offset_nrows += mGPU->nrows;
         printf("queued on dev = %d\n", iDevice);
+        cudaDeviceSynchronize();
     }
-
-  for (int iDevice = 0; iDevice < nDevices; iDevice++) {
-    cudaSetDevice(iDevice);
-    cudaDeviceSynchronize();
-  }
 
   cudaSetDevice(0);
   cudaEventRecord(bicg->stopBCG);

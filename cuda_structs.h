@@ -350,6 +350,7 @@ typedef struct {
     int*    djsavedJ;
     int*    disavedJ;
 
+    ModelDataVariable mdvCPU;
     ModelDataVariable *mdv;
     ModelDataVariable *mdvo;
 

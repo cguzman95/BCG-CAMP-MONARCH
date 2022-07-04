@@ -88,7 +88,6 @@ __global__ void cudamatScaleAddI(int nrows, double* dA, int* djA, int* diA, doub
 }
 
 // A = I - gamma*J
-// Based on CSR format, works on CSC too
 // dA  : Matrix values (nnz size)
 // djA : Matrix columns (nnz size)
 // diA : Matrix rows (nrows+1 size)
@@ -649,7 +648,7 @@ __device__ void cudaDeviceaddD(double *g_odata, double in, volatile double *sdat
 
 }
 
-__device__ void cudaDeviceSpmvCSC_block(double* dx, double* db, int nrows, double* dA, int* djA, int* diA, int n_shr_empty)
+__device__ void cudaDeviceSpmvCSCAtomic(double* dx, double* db, int nrows, double* dA, int* djA, int* diA, int n_shr_empty)
 {
   double mult;
   extern __shared__ double sdata[];
@@ -661,13 +660,6 @@ __device__ void cudaDeviceSpmvCSC_block(double* dx, double* db, int nrows, doubl
     dx[row]=0.0;
     __syncthreads(); //Multiple threads can save to the same row
 
-#ifdef DEBUG_CUDADEVICESPMVCSC_BLOCK
-    if(diA[row] != diA[row] ||
-            diA[row+1] != diA[row+1]
-    )
-      printf("NAN dia[row]");
-#endif
-
     for(int j=diA[row]; j<diA[row+1]; j++)
     {
 
@@ -678,57 +670,59 @@ __device__ void cudaDeviceSpmvCSC_block(double* dx, double* db, int nrows, doubl
         printf("NAN djA[j]]");
 #endif
 
-
-#ifndef cudaDeviceSpmvCSC_block_atomicadd
-
       mult = db[row]*dA[j];
       //atomicAdd(&(dx[djA[j]]),mult);
       atomicAdd_block(&(dx[djA[j]]),mult);
-#else
-
-      mult = db[row]*dA[j];
-      //atomicAdd_block(&(dx[djA[j]]),mult);
-
-        //wrong
-      cudaDeviceaddD(&(dx[djA[j]]), mult, sdata, n_shr_empty);
-
-      //not working
-      //cudaDeviceSpmvCSC_blockReduce(mult,&(dx[djA[j]]),nrows,n_shr_empty);
-      //cudaDevicedotxy(db, &dA[j], &dx[djA[j]], nrows, n_shr_empty);
-
-#endif
-
 //		dx[djA[j]]+= db[row]*dA[j];
     }
   }
   __syncthreads();
 }
 
-
-__device__ void cudaDeviceSpmvCSC_block(double* dx, double* db, int nrows, double* dA, int* djA, int* diA)
+__device__ void cudaDeviceSpmvCSCLoopRows(double* dx, double* db, int nrows, double* dA, int* djA, int* diA, int n_shr_empty)
 {
+  extern __shared__ double sdata[];
+  int tid = threadIdx.x + blockDim.x*blockIdx.x;
   __syncthreads();
-  double mult;
-  int row= threadIdx.x + blockDim.x*blockIdx.x;
-  if(row < nrows)
-  {
-    int jstart = diA[row];
-    int jend   = diA[row+1];
-    for(int j=jstart; j<jend; j++)
+  dx[tid]=0.0;
+  __syncthreads();
+
+  int offset = 0;
+  for(int i=0; i<nrows; i++) {
+    int ntids=diA[i+1]-diA[i];
+    if (tid<ntids){
+      dx[djA[tid+offset]]+=db[i]*dA[tid+offset];
+      offset+=ntids;
+    }
+    __syncthreads();
+  }
+
+    /*
+    for(int j=diA[row]; j<diA[row+1]; j++)
     {
       mult = db[row]*dA[j];
       //atomicAdd(&(dx[djA[j]]),mult);
       atomicAdd_block(&(dx[djA[j]]),mult);
-//		dx[djA[j]]+= db[row]*dA[j];
-    }
-  }
-  __syncthreads();
+		  //dx[djA[j]]+= db[row]*dA[j];
+    }__syncthreads();
+     */
+
 }
+
+
 
 __device__ void cudaDeviceSpmv(double* dx, double* db, int nrows, double* dA, int* djA, int* diA, int n_shr_empty)
 {
 
-  cudaDeviceSpmvCSC_block(dx,db,nrows,dA,djA,diA,n_shr_empty);
+#ifdef CSR
+  cudaDeviceSpmvCSR(dx,db,nrows,dA,djA,diA);
+#elif CSC_ATOMIC
+  cudaDeviceSpmvCSCAtomic(dx,db,nrows,dA,djA,diA,n_shr_empty);
+#elif CSC_LOOP_ROWS
+  cudaDeviceSpmvCSCLoopRows(dx,db,nrows,dA,djA,diA,n_shr_empty);
+#elif CBD
+  cudaDeviceSpmvBoolDet(dx,db,nrows,dA,diA);
+#endif
 
 }
 

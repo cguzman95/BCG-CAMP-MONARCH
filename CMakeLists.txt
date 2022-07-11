@@ -4,6 +4,9 @@ project(MultiGPUOpenMPCAMP)
 option(CSR "" OFF)
 option(CSCAtomic "" OFF)
 option(CSC_LOOP_ROWS "" OFF)
+option(CSD "Sparse Determinant" OFF)
+option(CBD "Boolean Determinant" OFF)
+option(CUID "Diagonal Indexed to A" OFF)
 
 if(CSR)
     add_definitions(-DCSR)
@@ -17,9 +20,23 @@ if(CSC_LOOP_ROWS)
     add_definitions(-DCSC_LOOP_ROWS)
 endif()
 
+if(CSD)
+    add_definitions(-DCSD)
+endif()
+
+if(CBD)
+    add_definitions(-DCBD)
+endif()
+
+if(CUID)
+    add_definitions(-DCUID)
+endif()
+
 enable_language(CUDA)
 
+#set(CMAKE_CUDA_STANDARD 14)
 set(STD_CUDA_FLAGS "-lineinfo -arch=compute_70 -code=sm_70 -dc")
+#set(WIN32 ON)
 
 set(CAMP_CUDA_SRC libsolv.cu)
 set_source_files_properties(${CAMP_CUDA_SRC} PROPERTIES COMPILE_FLAGS

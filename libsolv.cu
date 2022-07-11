@@ -565,6 +565,7 @@ __device__ void cudaDeviceSpmvCSR(double* dx, double* db, int nrows, double* dA,
 {
   __syncthreads();
   int row= threadIdx.x + blockDim.x*blockIdx.x;
+  if(row==0)printf("cudaDeviceSpmvCSR\n");
   if(row < nrows)
   {
     double sum = 0.0;
@@ -709,7 +710,79 @@ __device__ void cudaDeviceSpmvCSCLoopRows(double* dx, double* db, int nrows, dou
 
 }
 
+__device__ void cudaDeviceSpmvCSD(double* dx, double* db, int nrows, double* dA, int* djA, int* diA, int n_shr_empty)
+{
+  int tid = threadIdx.x + blockDim.x*blockIdx.x;
+  __syncthreads();
+  dx[tid]=0.0;
+  __syncthreads();
 
+  //dx[tid]+=db[tid]*dA[tid]; //main diagonal
+
+}
+
+__device__ void cudaDeviceSpmvBoolDet(double* dx, double* db, int nrows, double* dA, int* diA)
+{
+  int tid = threadIdx.x + blockDim.x*blockIdx.x;
+  __syncthreads();
+  dx[tid]=0.0;
+  __syncthreads();
+
+  //dx[tid]+=db[tid]*dA[tid]; //main diagonal
+
+  /*
+
+  int id=tid;
+  dx[tid]+=db[tid]*dA[tid];
+  for(int i=1; i<nrows; i++) {
+    id+=i;
+    if(id==nrows){
+      id=0;
+    }
+    if(diA[i*nrows+tid]==1)
+      dx[id]+=db[tid]*dA[tid+i*nrows];
+
+
+    __syncthreads();
+  }
+*/
+
+}
+
+__device__ void cudaDeviceSpmvCUID(double* dx, double* db, int nrows, double* dA, int* diA)
+{
+  int tid = threadIdx.x + blockDim.x*blockIdx.x;
+  double mult;
+  __syncthreads();
+  dx[tid]=0.0;
+  __syncthreads();
+
+  //dx[tid]+=db[tid]*dA[tid]; //main diagonal
+
+  //[n_row*n_row] with the index to access A for each tid
+  //e.g. [0 -1  1]  Thread 0 access index 1 of A, Thread 1 skips because there is no number here (zero in original matrix), Thread 2 access  A[iRow*n_row+1]
+
+  if(tid==0)printf("cudaDeviceSpmvCUID\n");
+
+  int iRow=tid;
+  dx[tid]+=db[tid]*dA[tid];
+  __syncthreads();
+  for(int i=1; i<nrows; i++) {
+    iRow++;
+    if(iRow>=nrows){
+      iRow=0;
+    }
+    if(diA[tid]>=0)
+     dx[iRow]+=db[tid]*dA[diA[tid]];
+
+    //if(diA[tid]>=0){
+      //mult = db[tid]*dA[diA[tid]];
+      //atomicAdd(&(dx[iRow]),mult);
+    //}
+    __syncthreads();
+  }
+
+}
 
 __device__ void cudaDeviceSpmv(double* dx, double* db, int nrows, double* dA, int* djA, int* diA, int n_shr_empty)
 {
@@ -720,8 +793,14 @@ __device__ void cudaDeviceSpmv(double* dx, double* db, int nrows, double* dA, in
   cudaDeviceSpmvCSCAtomic(dx,db,nrows,dA,djA,diA,n_shr_empty);
 #elif CSC_LOOP_ROWS
   cudaDeviceSpmvCSCLoopRows(dx,db,nrows,dA,djA,diA,n_shr_empty);
+#elif CSD
+  cudaDeviceSpmvCSD(dx,db,nrows,dA,djA,diA,n_shr_empty);
 #elif CBD
   cudaDeviceSpmvBoolDet(dx,db,nrows,dA,diA);
+#elif CUID
+  cudaDeviceSpmvCUID(dx,db,nrows,dA,diA);
+#else
+  cudaDeviceSpmvCSR(dx,db,nrows,dA,djA,diA);
 #endif
 
 }

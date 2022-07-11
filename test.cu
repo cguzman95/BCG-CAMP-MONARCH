@@ -178,7 +178,7 @@ void swapCSC_CSR_BCG(ModelDataGPU *mGPU,
   double Ax[nnz]={5.,4.,2.,3.,1.,8.};
   int* Bp=(int*)malloc((n_row+1)*sizeof(int));
   int* Bi=(int*)malloc(nnz*sizeof(int));
-  double* Bx=(int*)malloc(nnz*sizeof(double));
+  double* Bx=(double*)malloc(nnz*sizeof(double));
 
 #else
 
@@ -210,6 +210,10 @@ void swapCSC_CSR_BCG(ModelDataGPU *mGPU,
   printf("\n");
   printf("Bx:\n");
   for(int i=0;i<nnz;i++)
+      //printf("Bpi Aj[j] %d %d \n",Bpi[Aj[j]],Aj[j]);
+      //0 2 1
+      //1 0 2
+      //2 1 0
     printf("%-le ",Bx[i]);
   printf("\n");
 
@@ -238,9 +242,206 @@ void swapCSC_CSR_BCG(ModelDataGPU *mGPU,
 
 #else
 
-  //cudaMemcpyAsync(mGPU->diA,Bp,(mGPU->nrows+1)*sizeof(int),cudaMemcpyHostToDevice, 0);
-  //cudaMemcpyAsync(mGPU->djA,Bi,mGPU->nnz*sizeof(int),cudaMemcpyHostToDevice, 0);
-  //cudaMemcpyAsync(mGPU->dA,Bx,mGPU->nnz*sizeof(double),cudaMemcpyHostToDevice, 0);
+  for(int i=0;i<=n_row;i++)
+    Ap[i] = Bp[i];
+  for(int i=0;i<nnz;i++)
+    Aj[i] = Bi[i];
+  for(int i=0;i<nnz;i++)
+    Ax[i] = Bx[i];
+
+#endif
+
+  free(Bp);
+  free(Bi);
+  free(Bx);
+
+}
+
+void swapCSR_CSD(int n_row, int n_col, int* Ap, int* Aj, double* Ax, int* Bp, int* Bi, double* Bx){
+
+  int nnz=Ap[n_row];
+
+  memset(Bp, 0, (n_row+1)*sizeof(int));
+  int* diags=(int*)malloc((n_row*2-1)*sizeof(int));
+  int* Bpi=(int*)malloc((n_row)*sizeof(int));
+  int* BiBool=(int*)malloc((n_row*n_row)*sizeof(int));
+  memset(BiBool, 0, (n_row*n_row)*sizeof(int));
+
+  Bpi[0]=0;
+  for(int i = 1; i < n_row; i++){
+    Bpi[i]=n_row-i;
+    //printf("Bpi i %d %d \n",Bpi[i],i);
+  } //0 2 1
+
+  for(int row = 0; row < n_row; row++){
+    for(int j = Ap[row]; j < Ap[row+1]; j++) {
+      Bp[Bpi[Aj[j]]]++; //Add value to nº values for diagonal
+
+      //AiBool[row*n_row+Aj[j]]=1;
+
+      //printf("Bpi Aj[j] %d %d \n",Bpi[Aj[j]],Aj[j]);
+      //0 2 1
+      //1 0 2
+      //2 1 0
+    }
+    //0 2 1
+    for(int i = 0; i < n_row; i++){
+      Bpi[i]++;
+      if(Bpi[i]==n_row){
+        Bpi[i]=0;
+      }
+      //printf("Bpi i %d %d \n",Bpi[i],i);
+    }//1 0 2
+  }
+  //printf("n_row %d \n",n_row);
+
+/*
+  printf("Bpi:\n");
+  for(int i=0;i<n_row;i++)
+    printf("%d ",Bpi[i]);
+  printf("\n");
+  printf("Bp:\n");
+  for(int i=0;i<n_row;i++)
+    printf("%d ",Bp[i]);
+  printf("\n");
+*/
+
+  //exit(0);
+
+  memset(Bx, 0, (nnz)*sizeof(double));
+  int* offsetBx=(int*)malloc((n_row)*sizeof(int));
+  memset(offsetBx, 0, (n_row)*sizeof(int));
+  for(int row = 0; row < n_row; row++){
+    for(int j = Ap[row]; j < Ap[row+1]; j++) {
+      //Bp[Bpi[Aj[j]]]++; //Add value to nº values for diagonal
+
+      if(Aj[j]<=row){
+        int iDiag=Bpi[Aj[j]];
+        int nElemTillDiag=0;
+        for(int i = 0; i < iDiag; i++){
+          nElemTillDiag+=Bp[i];
+        }
+        //printf("nElemTillDiag  offsetBx[iDiag] Aj[j] %d %d %d %d\n",nElemTillDiag, offsetBx[iDiag],iDiag,Aj[j]);
+        Bx[nElemTillDiag+offsetBx[iDiag]]=Ax[j];
+        offsetBx[iDiag]++;
+        BiBool[nElemTillDiag+offsetBx[iDiag]]=1;
+        //BiBool[nElemTillDiag+offsetBx[iDiag]]=1;
+      }
+    }
+    //0 2 1
+    for(int i = 0; i < n_row; i++){
+      Bpi[i]++;
+      if(Bpi[i]==n_row){
+        Bpi[i]=0;
+      }
+      //printf("Bpi i %d %d \n",Bpi[i],i);
+    }//1 0 2
+  }
+
+  for(int row = 0; row < n_row; row++){
+    for(int j = Ap[row]; j < Ap[row+1]; j++) {
+      //Bp[Bpi[Aj[j]]]++; //Add value to nº values for diagonal
+
+      if(Aj[j]>row){
+        int iDiag=Bpi[Aj[j]];
+        int nElemTillDiag=0;
+        for(int i = 0; i < iDiag; i++){
+          nElemTillDiag+=Bp[i];
+        }
+        //printf("nElemTillDiag  offsetBx[iDiag] Aj[j] %d %d %d %d\n",nElemTillDiag, offsetBx[iDiag],iDiag,Aj[j]);
+        Bx[nElemTillDiag+offsetBx[iDiag]]=Ax[j];
+        offsetBx[iDiag]++;
+        BiBool[nElemTillDiag+offsetBx[iDiag]]=1;
+      }
+    }
+    //0 2 1
+    for(int i = 0; i < n_row; i++){
+      Bpi[i]++;
+      if(Bpi[i]==n_row){
+        Bpi[i]=0;
+      }
+      //printf("Bpi i %d %d \n",Bpi[i],i);
+    }//1 0 2
+  }
+
+  printf("BiBool:\n");
+  for(int i=0;i<n_row*n_row;i++)
+    printf("%d ",BiBool[i]);
+  printf("\n");
+
+  printf("Bx:\n");
+  for(int i=0;i<nnz;i++)
+    printf("%lf ",Bx[i]);
+  printf("\n");
+
+
+  exit(0);
+
+ free(diags);
+ free(BiBool);
+
+}
+
+void swapCSC_CSD_BCG(ModelDataGPU *mGPU,
+                     int *Ap0, int *Aj0, double *Ax0){
+
+#ifndef TEST_CSRtoCSD
+
+  //Example configuration based in  KLU Sparse pdf
+  const int n_row=3;
+  const int n_col=n_row;
+  int nnz=7;
+  int Ap[]={0,2,4,7};
+  int Aj[]={0,2,0,1,0,1, 2};
+  double Ax[]={5., 7., 4.,2.,3.,1.,8.};
+  /*
+  int nnz=6;
+  int Ap[n_row+1]={0,1,3,6};
+  int Aj[nnz]={0,0,1,0,1,2};
+  double Ax[nnz]={5.,4.,2.,3.,1.,8.};
+   */
+  int* Bp=(int*)malloc((n_row+1)*sizeof(int)); //Nº of values for each diagonal
+  int* Bi=(int*)malloc(nnz*sizeof(int));
+  double* Bx=(double*)malloc(nnz*sizeof(double));
+
+#else
+
+  int *Ap=Ap0;
+  int *Aj=Aj0;
+  double *Ax=Ax0;
+  int n_row=mGPU->nrows;
+  int n_col=mGPU->nrows;
+  int nnz=mGPU->nnz;
+  int* Bp=(int*)malloc((n_row+1)*sizeof(int));
+  int* Bi=(int*)malloc(nnz*sizeof(int));
+  double* Bx=(double*)malloc(nnz*sizeof(double));
+
+#endif
+
+  swapCSR_CSD(n_row,n_col,Ap,Aj,Ax,Bp,Bi,Bx);
+
+#ifndef TEST_CSRtoCSD
+
+  //Correct result:
+  //int Cp[n_row+1]={0,3,5,6};
+  //int Ci[nnz]={0,1,2,1,2,2};
+  //int Cx[nnz]={5,4,3,2,1,8};
+
+  printf("Bp:\n");
+  for(int i=0;i<(n_row+1);i++)
+    printf("%d ",Bp[i]);
+  printf("\n");
+  printf("Bi:\n");
+  for(int i=0;i<nnz;i++)
+    printf("%d ",Bi[i]);
+  printf("\n");
+  printf("Bx:\n");
+  for(int i=0;i<nnz;i++)
+    printf("%-le ",Bx[i]);
+  printf("\n");
+  exit(0);
+
+#else
 
   for(int i=0;i<=n_row;i++)
     Ap[i] = Bp[i];
@@ -254,6 +455,198 @@ void swapCSC_CSR_BCG(ModelDataGPU *mGPU,
   free(Bp);
   free(Bi);
   free(Bx);
+
+}
+
+
+void swapCSR_CUID(int n_row, int n_col, int* Ap, int* Aj, double* Ax, int* Bp, int* Bi, double* Bx){
+
+  int nnz=Ap[n_row];
+
+  memset(Bp, 0, (n_row+1)*sizeof(int));
+  int* Bpi=(int*)malloc((n_row)*sizeof(int));
+  //int* BiBool=(int*)malloc((n_row*n_row)*sizeof(int));
+  //memset(BiBool, 0, (n_row*n_row)*sizeof(int));
+
+  Bpi[0]=0;
+  for(int i = 1; i < n_row; i++){
+    Bpi[i]=n_row-i;
+    //printf("Bpi i %d %d \n",Bpi[i],i);
+  } //0 2 1
+
+  for(int row = 0; row < n_row; row++){
+    for(int j = Ap[row]; j < Ap[row+1]; j++) {
+      Bp[Bpi[Aj[j]]]++; //Add value to nº values for diagonal
+
+      //AiBool[row*n_row+Aj[j]]=1;
+
+      //printf("Bpi Aj[j] %d %d \n",Bpi[Aj[j]],Aj[j]);
+      //0 2 1
+      //1 0 2
+      //2 1 0
+    }
+    //0 2 1
+    for(int i = 0; i < n_row; i++){
+      Bpi[i]++;
+      if(Bpi[i]==n_row){
+        Bpi[i]=0;
+      }
+      //printf("Bpi i %d %d \n",Bpi[i],i);
+    }//1 0 2
+  }
+  //printf("n_row %d \n",n_row);
+
+/*
+  printf("Bpi:\n");
+  for(int i=0;i<n_row;i++)
+    printf("%d ",Bpi[i]);
+  printf("\n");
+  printf("Bp:\n");
+  for(int i=0;i<n_row;i++)
+    printf("%d ",Bp[i]);
+  printf("\n");
+*/
+
+  //exit(0);
+
+  memset(Bx, 0, (nnz)*sizeof(double));
+  int* offsetBx=(int*)malloc((n_row)*sizeof(int));
+  memset(offsetBx, 0, (n_row)*sizeof(int));
+  memset(Bi, -1, (n_row*n_row)*sizeof(int));
+  printf("\n");
+  for(int row = 0; row < n_row; row++){
+    for(int j = Ap[row]; j < Ap[row+1]; j++) {
+      if(Aj[j]<=row){
+        int iDiag=Bpi[Aj[j]];
+        int nElemTillDiag=0;
+        for(int i = 0; i < iDiag; i++){
+          nElemTillDiag+=Bp[i];
+        }
+        //printf("nElemTillDiag  offsetBx[iDiag] Aj[j] %d %d %d %d\n",nElemTillDiag, offsetBx[iDiag],iDiag,Aj[j]);
+        Bx[nElemTillDiag+offsetBx[iDiag]]=Ax[j];
+        int iBi=iDiag*n_row+Aj[j];
+        Bi[iBi]=nElemTillDiag+offsetBx[iDiag];
+        //printf("Bi[i] %d %d\n",Bi[iBi], iBi);
+        //BiBool[nElemTillDiag+offsetBx[iDiag]]=1;
+        offsetBx[iDiag]++;
+      }
+    }
+    //0 2 1
+    for(int i = 0; i < n_row; i++){
+      Bpi[i]++;
+      if(Bpi[i]==n_row){
+        Bpi[i]=0;
+      }
+      //printf("Bpi i %d %d \n",Bpi[i],i);
+    }//1 0 2
+  }
+
+  for(int row = 0; row < n_row; row++){
+    for(int j = Ap[row]; j < Ap[row+1]; j++) {
+      if(Aj[j]>row){
+        int iDiag=Bpi[Aj[j]];
+        int nElemTillDiag=0;
+        for(int i = 0; i < iDiag; i++){
+          nElemTillDiag+=Bp[i];
+        }
+        //printf("nElemTillDiag  offsetBx[iDiag] Aj[j] %d %d %d %d\n",nElemTillDiag, offsetBx[iDiag],iDiag,Aj[j]);
+        Bx[nElemTillDiag+offsetBx[iDiag]]=Ax[j];
+        int iBi=iDiag*n_row+Aj[j];
+        Bi[iBi]=nElemTillDiag+offsetBx[iDiag];
+        //printf("Bi[i] %d %d\n",Bi[iBi], iBi);
+        //BiBool[nElemTillDiag+offsetBx[iDiag]]=1;
+        offsetBx[iDiag]++;
+      }
+    }
+    //0 2 1
+    for(int i = 0; i < n_row; i++){
+      Bpi[i]++;
+      if(Bpi[i]==n_row){
+        Bpi[i]=0;
+      }
+      //printf("Bpi i %d %d \n",Bpi[i],i);
+    }//1 0 2
+  }
+
+#ifdef TEST_CSRtoCUID
+
+  /*
+  printf("BiBool:\n");
+  for(int i=0;i<n_row*n_row;i++)
+    printf("%d ",BiBool[i]);
+  printf("\n");
+   */
+
+  printf("Bi:\n");
+  for(int i=0;i<n_row*n_row;i++)
+    printf("%d ",Bi[i]);
+  printf("\n");
+
+  printf("Bx:\n");
+  for(int i=0;i<nnz;i++)
+    printf("%le ",Bx[i]);
+  printf("\n");
+
+  exit(0);
+
+  //free(BiBool);
+#endif
+
+  free(Bpi);
+  free(offsetBx);
+
+}
+
+void swapCSR_CUID_BCG(ModelDataGPU *mGPU,
+                     int *Ap0, int *Aj0, double *Ax0, int *Aj1){
+
+#ifdef TEST_CSRtoCUID
+
+  //Example configuration based in  KLU Sparse pdf
+  int n_row=3;
+  int n_col=n_row;
+  int nnz=7;
+  int Ap[n_row+1]={0,1,4,7};
+  int Aj[nnz]={0,0,1,2,0,1, 2};
+  double Ax[nnz]={5.,  4.,2., 7., 3.,1.,8.};
+  /*
+  int nnz=6;
+  int Ap[n_row+1]={0,1,3,6};
+  int Aj[nnz]={0,0,1,0,1,2};
+  double Ax[nnz]={5.,4.,2.,3.,1.,8.};
+   */
+  int* Bp=(int*)malloc((n_row+1)*sizeof(int)); //Nº of values for each diagonal
+  int* Bi=(int*)malloc(n_row*n_row*sizeof(int));
+  double* Bx=(double*)malloc(nnz*sizeof(double));
+
+#else
+
+  int *Ap=Ap0;
+  int *Aj=Aj0;
+  double *Ax=Ax0;
+  int n_row=mGPU->nrows;
+  int n_col=mGPU->nrows;
+  int nnz=mGPU->nnz;
+  int* Bp=(int*)malloc((n_row+1)*sizeof(int));
+  int* Bi=(int*)malloc(n_row*n_row*sizeof(int));
+  double* Bx=(double*)malloc(nnz*sizeof(double));
+
+#endif
+
+  //for aqui sobre las A
+
+  swapCSR_CUID(n_row,n_col,Ap,Aj,Ax,Bp,Bi,Bx);
+
+  for(int i=0;i<n_row*n_row;i++)
+    Aj1[i] = Bi[i];
+  for(int i=0;i<nnz;i++)
+    Ax[i] = Bx[i];
+
+  free(Bi);
+  free(Bp);
+  free(Bx);
+
+  printf("swapCSR_CUID_BCG end\n");
 
 }
 
@@ -413,7 +806,7 @@ void solveBcgCuda(
     unsigned int tid = threadIdx.x;
     int active_threads = nrows;
 
-#ifdef DEBUG_BCG_COUNTER
+#ifndef DEBUG_BCG_COUNTER
 
     ModelDataGPU* md = &md_object;
     ModelDataVariable *mdvo = md_object.mdvo;
@@ -641,7 +1034,7 @@ void solveBcgCuda(
         //dvcheck_input_gpud(dr0,nrows,k++);
 
 
-#ifdef DEBUG_BCG_COUNTER
+#ifndef DEBUG_BCG_COUNTER
         dmdv->counterBCGInternal = it; //slowdown by 50%
         *mdvo = *dmdv;
 #endif
@@ -798,6 +1191,13 @@ void BCG() {
   const int cellsConfBCG = 10;
   int n_cells_multiplier = n_cells/cellsConfBCG;
 
+
+
+  if (n_cells_multiplier==0){
+
+  }
+
+
   ModelDataGPU* mGPUs = (ModelDataGPU*)malloc(nDevices * sizeof(ModelDataGPU));
   ModelDataGPU* mGPU = &mGPUs[0];
   ModelDataGPU mGPU0_object;
@@ -933,9 +1333,44 @@ void BCG() {
 #elif CSC_LOOP_ROWS
   printf("CSC_LOOP_ROWS\n");
   swapCSC_CSR_BCG(mGPU0,iA,jA,A);
-#elif CBD
-  printf("CBD\n");
-  swapCSC_CSR_BCG(mGPU0,iA,jA,A);
+#elif CSD
+  printf("CSD\n");
+  swapCSC_CSD_BCG(mGPU0,iA,jA,A);
+#elif CUID
+  printf("CUID\n");
+
+  /*
+  printf("A:\n");
+  for(int i=0;i<mGPU0->nnz;i++)
+  printf("%le ",A[i]);
+  printf("\n");
+  */
+
+  int* jA1=(int*)malloc((mGPU0->nrows*mGPU0->nrows)*sizeof(int));
+  swapCSR_CUID_BCG(mGPU0,iA,jA,A,jA1);
+
+  /*
+  printf("A:\n");
+  for(int i=0;i<mGPU0->nnz;i++)
+    printf("%le ",A[i]);
+  printf("\n");
+   */
+
+  /*
+  printf("jA:\n");
+  for(int i=0;i<mGPU0->nrows *mGPU0->nrows ;i++)
+    printf("%d ",jA1[i]);
+  printf("\n");
+*/
+
+#else
+  printf("CSR\n");
+#endif
+
+#ifdef CUID
+  mGPU0->lenjA=mGPU0->nrows*mGPU0->nrows;
+#else
+  mGPU0->lenjA=mGPU0->nnz;
 #endif
 
   //for(int t = 0; t < timesteps; t++){
@@ -957,20 +1392,19 @@ void BCG() {
     mGPU->n_cells = n_cells;
     mGPU->nrows = mGPU0->nrows / mGPU0->n_cells * mGPU->n_cells;
     mGPU->nnz = mGPU0->nnz / mGPU0->n_cells * mGPU->n_cells;
+    mGPU->lenjA = mGPU0->lenjA / mGPU0->n_cells * mGPU->n_cells;;
     mGPU->maxIt = mGPU0->maxIt;
     mGPU->mattype = mGPU0->mattype;
     mGPU->tolmax = mGPU0->tolmax;
 
-    //printf("mGPU->nrows%d\n",mGPU->nrows);
-
     mGPU->mdvCPU.counterBCGInternal = 0;
-#ifdef DEBUG_BCG_COUNTER
+#ifndef DEBUG_BCG_COUNTER
     cudaMalloc((void**)&mGPU->mdv, sizeof(ModelDataVariable));
     cudaMalloc((void**)&mGPU->mdvo, sizeof(ModelDataVariable));
     cudaMemcpyAsync(mGPU->mdv, &mGPU->mdvCPU, sizeof(ModelDataVariable), cudaMemcpyHostToDevice, 0);
 #endif
 
-    cudaMalloc((void**)&mGPU->djA, mGPU->nnz * sizeof(int));
+    cudaMalloc((void**)&mGPU->djA, mGPU->lenjA * sizeof(int));
     cudaMalloc((void**)&mGPU->diA, (mGPU->nrows + 1) * sizeof(int));
     cudaMalloc((void**)&mGPU->dA, mGPU->nnz * sizeof(double));
     cudaMalloc((void**)&mGPU->ddiag, mGPU->nrows * sizeof(double));
@@ -1035,20 +1469,32 @@ void BCG() {
 
       //printf("mGPU->nrows%d\n",mGPU->nrows);
 
-      cudaMemcpyAsync(mGPU->djA, jA, mGPU->nnz * sizeof(int), cudaMemcpyHostToDevice, 0);
+#ifdef CUID
+    cudaMemcpyAsync(mGPU->djA, jA1, mGPU->lenjA * sizeof(int), cudaMemcpyHostToDevice, 0);
+#else
+    cudaMemcpyAsync(mGPU->djA, jA, mGPU->lenjA * sizeof(int), cudaMemcpyHostToDevice, 0);
+#endif
       cudaMemcpyAsync(mGPU->diA, iA, (mGPU->nrows + 1) * sizeof(int), cudaMemcpyHostToDevice, 0);
       cudaMemcpyAsync(mGPU->dA, A + offset_nnz, mGPU->nnz * sizeof(double), cudaMemcpyHostToDevice);
       cudaMemcpyAsync(mGPU->ddiag, diag + offset_nrows, mGPU->nrows * sizeof(double), cudaMemcpyHostToDevice, 0);
       cudaMemcpyAsync(mGPU->dx, x + offset_nrows, mGPU->nrows * sizeof(double), cudaMemcpyHostToDevice, 0);
       HANDLE_ERROR(cudaMemcpyAsync(mGPU->dtempv, tempv + offset_nrows, mGPU->nrows * sizeof(double), cudaMemcpyHostToDevice, 0));
 
+      cudaDeviceSynchronize();
+
       solveGPU_block(mGPU,bicg);
 
-#ifdef DEBUG_BCG_COUNTER
+#ifndef DEBUG_BCG_COUNTER
     cudaMemcpyAsync(&mGPU->mdvCPU, mGPU->mdvo, sizeof(ModelDataVariable), cudaMemcpyDeviceToHost);
 #endif
 
-      HANDLE_ERROR(cudaMemcpyAsync(jA, mGPU->djA, mGPU->nnz * sizeof(int), cudaMemcpyDeviceToHost, 0));
+      cudaDeviceSynchronize();
+#ifdef CUID
+    HANDLE_ERROR(cudaMemcpy(jA1, mGPU->djA, mGPU->lenjA * sizeof(int), cudaMemcpyDeviceToHost));
+#else
+    HANDLE_ERROR(cudaMemcpy(jA, mGPU->djA, mGPU->lenjA * sizeof(int), cudaMemcpyDeviceToHost));
+    //HANDLE_ERROR(cudaMemcpyAsync(jA, mGPU->djA, mGPU->lenjA * sizeof(int), cudaMemcpyDeviceToHost, 0));
+#endif
       cudaMemcpyAsync(iA, mGPU->diA, (mGPU->nrows + 1) * sizeof(int), cudaMemcpyDeviceToHost, 0);
       cudaMemcpyAsync(A + offset_nnz, mGPU->dA, mGPU->nnz * sizeof(double), cudaMemcpyDeviceToHost, 0);
       cudaMemcpyAsync(diag + offset_nrows, mGPU->ddiag, mGPU->nrows * sizeof(double), cudaMemcpyDeviceToHost, 0);
@@ -1071,6 +1517,10 @@ void BCG() {
   cudaEventElapsedTime(&msBiConjGrad, bicg->startBCG, bicg->stopBCG);
   bicg->timeBiConjGrad += msBiConjGrad / 1000;
 
+#ifndef DEBUG_BCG_COUNTER
+  printf("counterBCGInternal %d\n",mGPU->mdvCPU.counterBCGInternal);
+#endif
+
     /*
       for(int icell=0; icell<mGPU0->n_cells; icell++){
         printf("cell %d:\n",icell);
@@ -1087,7 +1537,6 @@ void BCG() {
 
   double* A2_aux = (double*)malloc(mGPU0->nnz * sizeof(double));
   double* x2_aux = (double*)malloc(mGPU0->nrows * sizeof(double));
-  double* tempv2_aux = (double*)malloc(mGPU0->nrows * sizeof(double));
 
   fp = fopen("../data/outBCG.txt", "r");
 
@@ -1104,8 +1553,6 @@ void BCG() {
   fclose(fp);
 
   double* x2 = (double*)malloc(mGPU0->nrows * n_cells_multiplier * sizeof(double));
-
-  //printf("mGPU0->nrows %d\n",mGPU0->nrows);
 
   for (int i = 0; i < n_cells_multiplier; i++) {
       memcpy(x2 + i * mGPU0->nrows, x2_aux, mGPU0->nrows * sizeof(double));
@@ -1137,7 +1584,7 @@ void BCG() {
       printf("SUCCESS\n");
 
   printf("timeBiConjGrad %.2e\n",bicg->timeBiConjGrad);
-#ifdef DEBUG_BCG_COUNTER
+#ifndef DEBUG_BCG_COUNTER
   printf("counterBCGInternal %d\n",mGPU->mdvCPU.counterBCGInternal);
 #endif
 

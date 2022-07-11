@@ -273,6 +273,7 @@ typedef struct {
     //int n_per_cell_solver_jac_elem;
 
     int nnz;
+    int lenjA;
     double *yout;
     double *cv_Vabstol;
 

@@ -791,9 +791,9 @@ def all_timesteps():
 
     conf.timeStepsDt = 2
 
-    conf.caseBase = "GPU CSR"
+    #conf.caseBase = "GPU CSR"
     #conf.caseBase = "GPU CSC_LOOP_ROWS" #Error
-    conf.caseBase = "GPU CBD"
+    conf.caseBase = "GPU CUID"
 
     conf.casesOptim = []
     #conf.casesOptim.append("GPU CSR")

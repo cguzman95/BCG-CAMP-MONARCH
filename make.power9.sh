@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+echo "Start make.power9.sh"
+
 cd build
 #make -j 4 #VERBOSE=1
 
@@ -23,7 +25,7 @@ elif [ $use_nsight == "true" ]; then
 
 else
 
-python ../TestMonarch.py
+time python ../TestMonarch.py
 #make -j 4
 #./test
 

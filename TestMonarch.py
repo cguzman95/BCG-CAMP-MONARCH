@@ -7,30 +7,29 @@
 import matplotlib as mpl
 
 mpl.use('TkAgg')
-import matplotlib.pyplot as plt
-import csv
+#import plot_functions #comment to save ~2s execution time
+import math_functions
 import sys, getopt
 import os
 import numpy as np
-from pylab import imread, subplot, imshow, show
-import plot_functions
 import datetime
-import time
 import json
 from pathlib import Path
-import shutil
 import zipfile
 from os import walk
-import importlib
 import subprocess
-import glob
-import pandas as pd
-import seaborn as sns
 
+
+class cmakeVarsClass:
+    def __init__(self):
+        self.caseImpl = ""
+        self.maxrregcount = ""
 
 class TestMonarch:
     def __init__(self):
         # Case configuration
+        #self.confCase = confCaseClass()
+        self.cmakeVars = cmakeVarsClass()
         self._chemFile = "monarch_binned"
         self.diffCells = ""
         self.mpi = "yes"
@@ -41,14 +40,16 @@ class TestMonarch:
         self.case = []
         self.nCells = 1
         self.caseGpuCpu = ""
-        self.caseMulticellsOnecell = ""
+        self.caseImpl = ""
         self.mpiProcesses = 1
         self.allocatedNodes = 1
         self.allocatedTasksPerNode = 160
         self.nGPUs = 1
         # Cases configuration
         self.is_start_cases_attributes = True
-        self.diffCellsL = ""
+        self.cmakeVarsBase = cmakeVarsClass()
+        self.cmakeVarsOptim = cmakeVarsClass()
+        self.diffCellsL = ["Realistic"]
         self.mpiProcessesCaseBase = 1
         self.mpiProcessesCaseOptimList = []
         self.nGPUsCaseOptimList = [1]
@@ -59,9 +60,10 @@ class TestMonarch:
         self.plotXKey = ""
         self.is_export = False
         self.is_import = False
-        self.profileCuda = False
+        self.profileCuda = ""
         # Auxiliary
         self.is_start_auxiliary_attributes = True
+        self.is_make = True
         self.sbatch_job_id = ""
         self.datacolumns = []
         self.stdColumns = []
@@ -94,22 +96,22 @@ def get_is_sbatch():
 
 def getCaseName(conf):
     case_multicells_onecell_name = ""
-    # if conf.caseMulticellsOnecell != "BDF" and conf.caseGpuCpu == "GPU":
+    # if conf.caseImpl != "BDF" and conf.caseGpuCpu == "GPU":
     # case_multicells_onecell_name = "LS "
-    if conf.caseMulticellsOnecell == "Block-cellsN":
+    if conf.caseImpl == "Block-cellsN":
         case_multicells_onecell_name += "Block-cells (N)"
-    elif conf.caseMulticellsOnecell == "Block-cells1":
+    elif conf.caseImpl == "Block-cells1":
         case_multicells_onecell_name += "Block-cells (1)"
-    elif conf.caseMulticellsOnecell == "Block-cellsNhalf":
+    elif conf.caseImpl == "Block-cellsNhalf":
         case_multicells_onecell_name += "Block-cells (N/2)"
-    elif conf.caseMulticellsOnecell.find("maxrregcount") != -1:
+    elif conf.caseImpl.find("maxrregcount") != -1:
         case_multicells_onecell_name += ""
         print("WARNING: Changed name maxrregcount to", case_multicells_onecell_name)
-        # case_multicells_onecell_name += conf.caseMulticellsOnecell
-    elif conf.caseMulticellsOnecell.find("One") != -1:
+        # case_multicells_onecell_name += conf.caseImpl
+    elif conf.caseImpl.find("One") != -1:
         case_multicells_onecell_name += "Base version"
     else:
-        case_multicells_onecell_name += conf.caseMulticellsOnecell
+        case_multicells_onecell_name += conf.caseImpl
 
     return case_multicells_onecell_name
 
@@ -123,49 +125,9 @@ def writeConfBCG(conf):
 
     file1.close()
 
-def write_itsolver_config_file(conf):
-    file1 = open(conf.itsolverConfigFile, "w")
-
-    cells_method_str = "CELLS_METHOD=" + conf.caseMulticellsOnecell
-    file1.write(cells_method_str)
-    # print("Saved", cells_method_str)
-
-    file1.close()
-
-
-def write_camp_config_file(conf):
-    try:
-        file1 = open(conf.campSolverConfigFile, "w")
-
-        if conf.caseGpuCpu == "CPU":
-            file1.write("USE_CPU=ON\n")
-        else:
-            file1.write("USE_CPU=OFF\n")
-
-        if conf.caseMulticellsOnecell == "BDF" or conf.caseMulticellsOnecell.find("maxrregcount") != -1:
-            # print("FOUND MAXRREGCOUNT")
-            if conf.chemFile == "monarch_binned":
-                print(
-                    "Error: monarch_binned can not run GPU BDF, disable GPU BDF or use a valid chemFile like monarch_cb05")
-                raise
-            else:
-                file1.write("USE_GPU_CVODE=ON\n")
-        else:
-            file1.write("USE_GPU_CVODE=OFF\n")
-
-        file1.write(str(conf.nGPUs))
-
-        file1.close()
-
-        # new_path = os.path.abspath(os.getcwd()) + "/" + conf.campSolverConfigFile
-        # print("write_camp_config_file in", new_path)
-        # conf.debug_path = new_path
-        # file_exists = os.path.exists(conf.debug_path)
-        # print(file_exists)
-
-    except Exception as e:
-        print("write_camp_config_file fails", e)
-
+    conf_path = "../data/confCmakeVars.json"
+    with open(conf_path, 'w', encoding='utf-8') as jsonFile:
+        json.dump(conf.cmakeVars.__dict__, jsonFile, indent=4, sort_keys=False)
 
 def get_commit_hash():
     try:
@@ -375,23 +337,31 @@ def run(conf):
         exec_str += "mpirun -v -np " + str(conf.mpiProcesses) + " --bind-to core "
         # exec_str+="srun -n "+str(conf.mpiProcesses)+" "
 
-    if conf.profileCuda and conf.caseGpuCpu == "GPU":
-        pathNvprof = "nvprof/"
+    if conf.profileCuda=="nvprof" and conf.caseGpuCpu == "GPU":
+        pathNvprof = "../nvprof/"
         Path(pathNvprof).mkdir(parents=True, exist_ok=True)
-        pathNvprof = "nvprof/" + conf.chemFile + \
-                     conf.caseMulticellsOnecell + str(conf.nCells) + ".nvprof "
-        # now = datetime.datetime.now()
-        # basename = now.strftime("%d-%m-%Y-%H.%M.%S") + conf.sbatch_job_id
-        exec_str += "nvprof --analysis-metrics -f -o " + pathNvprof
+        pathNvprof = "../nvprof/" + conf.caseImpl \
+                     + str(conf.nCells) + "Cells" +  ".nvprof "
+        #exec_str += "nvprof --analysis-metrics -f -o " + pathNvprof #all metrics
+        exec_str += "nvprof --print-gpu-trace " #registers per thread
         # --print-gpu-summary
         print("Saving Nvprof file in ", os.path.abspath(os.getcwd()) \
               + "/" + pathNvprof)
+    elif conf.profileCuda=="nsight" and conf.caseGpuCpu == "GPU":
+        pathNvprof = "../nsight/"
+        Path(pathNvprof).mkdir(parents=True, exist_ok=True)
+        pathNvprof = "../nsight/" + conf.caseImpl \
+                     + str(conf.nCells) + "Cells "
+        #exec_str += "/apps/NVIDIA-HPC-SDK/21.3/Linux_ppc64le/21.3/profilers/Nsight_Compute/ncu --set full -f -o " + pathNvprof
+        exec_str += "/apps/NVIDIA-HPC-SDK/21.3/Linux_ppc64le/21.3/profilers/Nsight_Compute/ncu "
+
+    # --print-gpu-summary
+        print("Saving nsight file in ", os.path.abspath(os.getcwd()) \
+          + "/" + pathNvprof)
 
     exec_str += "./test"
 
-    writeConfBCG(conf)
-
-    data_name = "timesAndCounters.csv"# conf.chemFile + '_' + conf.caseMulticellsOnecell + conf.results_file
+    data_name = "timesAndCounters.csv"# conf.chemFile + '_' + conf.caseImpl + conf.results_file
     tmp_path = 'out/' + data_name
 
     if conf.is_import and conf.plotYKey != "MAPE":
@@ -400,11 +370,47 @@ def run(conf):
         is_import, data_path = False, tmp_path
 
     if not is_import:
-        os.system("cmake . -D" + conf.caseMulticellsOnecell + "=ON")#-DENABLE_CSR=ON")
-        os.system("make -j 4")
-        os.system("cmake . -D" + conf.caseMulticellsOnecell + "=OFF")#-DENABLE_CSR=ON")
-        print("exec_str:", exec_str, conf.diffCells, conf.caseGpuCpu, conf.caseMulticellsOnecell, conf.mpiProcesses,
-              conf.nGPUs)
+        #with open("../data/conf.txt", 'r') as fp:
+            #caseImplImported = fp.readlines()[3].strip()
+        #print(caseImplImported, conf.caseImpl)
+
+        conf_name="../data/confCmakeVars.json"
+        jsonFile = open(conf_name)
+        conf_imported = json.load(jsonFile)
+        conf_dict = vars(conf.cmakeVars)
+        print("conf_dict",conf_dict)
+        #print("conf_imported",conf_imported)
+
+        cmake_str = "cmake ."
+        for confKey in conf_dict:
+            if conf_imported[confKey] != conf_dict[confKey]:
+                if conf_imported[confKey] != "":
+                    cmake_str += " -D" + conf_imported[confKey] + "=OFF"
+                if conf_dict[confKey] != "":
+                    cmake_str += " -D" + conf_dict[confKey] + "=ON"
+                conf.is_make = True
+                os.system(cmake_str)
+                #print(cmake_str)
+
+        if conf.is_make:
+            os.system("make -j 4")
+            conf.is_make = False
+
+        #if caseImplImported != conf.caseImpl:
+         #   cmake_str = "cmake . -D" + caseImplImported + "=OFF" + \
+           #           " -D" + conf.caseImpl + "=ON"
+            #os.system(cmake_str)
+            #os.system("make -j 4")
+
+            #conf.is_make = True
+
+        #if conf.is_make:
+        #    os.system("make -j 4")
+         #   conf.is_make = False
+
+        writeConfBCG(conf)
+
+        print("exec_str:", exec_str, "ncells", conf.nCells)#, conf.diffCells, conf.caseGpuCpu, conf.caseImpl, conf.mpiProcesses,conf.nGPUs)
         os.system(exec_str)
         if conf.is_export:
             export(conf, data_path)
@@ -474,7 +480,9 @@ def run_cases(conf):
 
     cases_words = conf.caseBase.split()
     conf.caseGpuCpu = cases_words[0]
-    conf.caseMulticellsOnecell = cases_words[1]
+    conf.caseImpl = cases_words[1]
+    conf.cmakeVarsBase.caseImpl = cases_words[1]
+    conf.cmakeVars = conf.cmakeVarsBase
 
     conf.case = conf.caseBase
     dataCaseBase = run_case(conf)
@@ -496,7 +504,9 @@ def run_cases(conf):
 
                 cases_words = caseOptim.split()
                 conf.caseGpuCpu = cases_words[0]
-                conf.caseMulticellsOnecell = cases_words[1]
+                conf.caseImpl = cases_words[1]
+                conf.cmakeVarsOptim.caseImpl = cases_words[1]
+                conf.cmakeVars = conf.cmakeVarsOptim
 
                 conf.case = caseOptim
                 data["caseOptim"] = run_case(conf)
@@ -575,9 +585,9 @@ def plot_cases(conf):
     # Set plot info
     cases_words = conf.caseBase.split()
     conf.caseGpuCpu = cases_words[0]
-    conf.caseMulticellsOnecell = cases_words[1]
+    conf.caseImpl = cases_words[1]
     case_multicells_onecell_name = getCaseName(conf)
-    # if conf.caseMulticellsOnecell.find("One-cell") != -1:
+    # if conf.caseImpl.find("One-cell") != -1:
     #    case_multicells_onecell_name = "Base version"
 
     case_gpu_cpu_name = ""
@@ -597,22 +607,22 @@ def plot_cases(conf):
     conf.legend = []
     cases_words = conf.casesOptim[0].split()
     conf.caseGpuCpu = cases_words[0]
-    conf.caseMulticellsOnecell = cases_words[1]
+    conf.caseImpl = cases_words[1]
     last_arch_optim = conf.caseGpuCpu
-    last_case_optim = conf.caseMulticellsOnecell
+    last_case_optim = conf.caseImpl
     is_same_arch_optim = True
     is_same_case_optim = True
     for caseOptim in conf.casesOptim:
         cases_words = caseOptim.split()
         conf.caseGpuCpu = cases_words[0]
-        conf.caseMulticellsOnecell = cases_words[1]
+        conf.caseImpl = cases_words[1]
         if last_arch_optim != conf.caseGpuCpu:
             is_same_arch_optim = False
         last_arch_optim = conf.caseGpuCpu
-        # print(last_case_optim,conf.caseMulticellsOnecell)
-        if last_case_optim != conf.caseMulticellsOnecell:
+        # print(last_case_optim,conf.caseImpl)
+        if last_case_optim != conf.caseImpl:
             is_same_case_optim = False
-        last_case_optim = conf.caseMulticellsOnecell
+        last_case_optim = conf.caseImpl
 
     is_same_diff_cells = False
     for diff_cells in conf.diffCellsL:
@@ -626,9 +636,9 @@ def plot_cases(conf):
                             continue
                     cases_words = caseOptim.split()
                     conf.caseGpuCpu = cases_words[0]
-                    conf.caseMulticellsOnecell = cases_words[1]
+                    conf.caseImpl = cases_words[1]
                     case_multicells_onecell_name = getCaseName(conf)
-                    if conf.caseMulticellsOnecell.find("BDF") != -1 or conf.caseMulticellsOnecell.find(
+                    if conf.caseImpl.find("BDF") != -1 or conf.caseImpl.find(
                             "maxrregcount") != -1:
                         is_same_diff_cells = True
                     legend_name = ""
@@ -721,13 +731,20 @@ def plot_cases(conf):
     datay = conf.datacolumns
 
     print("Nodes:", conf.allocatedNodes)
-    print("plotTitle: ", conf.plotTitle, " legend:", conf.legend)
     if namex == "Timesteps":
         print("Mean:", round(np.mean(datay), 2))
         print("Std", round(np.std(datay), 2))
     else:
         print("Std", conf.stdColumns)
+
+    if conf.cmakeVarsOptim.maxrregcount == "":
+        conf.cmakeVarsOptim.maxrregcount = "maxrregcountAuto"
+    if conf.cmakeVarsBase.maxrregcount == "":
+        conf.cmakeVarsBase.maxrregcount = "maxrregcountAuto"
+    print(conf.cmakeVarsOptim.maxrregcount, "vs", conf.cmakeVarsBase.maxrregcount)
+
     print(namex, ":", datax)
+    print("plotTitle: ", conf.plotTitle, " legend:", conf.legend)
     print(namey, ":", datay)
 
     #plot_functions.plotsns(namex, namey, datax, datay, conf.stdColumns, conf.plotTitle, conf.legend)
@@ -736,14 +753,12 @@ def plot_cases(conf):
 def all_timesteps():
     conf = TestMonarch()
 
-    conf.chemFile = "confBCG.txt"
+    conf.chemFile = "confBCG1Cell.txt"
+    #conf.chemFile = "confBCG10Cells.txt"
 
-    conf.diffCellsL = []
-    #conf.diffCellsL.append("Realistic")
-    conf.diffCellsL.append("Ideal")
-
-    conf.profileCuda = False
-    # conf.profileCuda = True
+    #conf.profileCuda = ""
+    conf.profileCuda = "nvprof"
+    #conf.profileCuda = "nsight"
 
     #conf.is_export = get_is_sbatch()
     # conf.is_export = True
@@ -782,46 +797,41 @@ def all_timesteps():
     # conf.allocatedTasksPerNode = 320
     # conf.allocatedTasksPerNode = get_ntasksPerNode_sbatch() #todo
 
-    conf.cells = [10]
-    #conf.cells = [100, 500, 1000, 5000, 10000]
-    # conf.cells = [50000,100000,500000,1000000]
+    conf.cells = [1000]
+    #conf.cells = [100, 1000, 10000, 100000]
 
     conf.timeSteps = 1
     #conf.timeSteps = 720
 
     conf.timeStepsDt = 2
 
-    #conf.caseBase = "GPU CSR"
-    #conf.caseBase = "GPU CSC_LOOP_ROWS" #Error
-    conf.caseBase = "GPU CUID"
+    conf.cmakeVarsBase.maxrregcount = ""
+    #conf.cmakeVarsBase.maxrregcount = "use_maxrregcount32"
+
+    #conf.cmakeVarsOptim.maxrregcount = ""
+    conf.cmakeVarsOptim.maxrregcount = "use_maxrregcount32"
+
+    #conf.caseBase = "GPU CSC_ATOMIC"
+    conf.caseBase = "GPU CSR"
+    #conf.caseBase = "GPU CSR_1INDEX"
+    #conf.caseBase = "GPU CUID"
+    #conf.caseBase = "GPU CSD"
+    #conf.caseBase = "GPU CSR_VECTOR" #Error
+    #conf.caseBase = "GPU CSR_ADAPTIVE"
+    #conf.caseBase = "GPU CSR_SHARED"
+    #conf.caseBase = "GPU CSR_SHARED_DB"
+    #conf.caseBase = "GPU CSR_SHARED_DB_JAC"
 
     conf.casesOptim = []
     #conf.casesOptim.append("GPU CSR")
-    #conf.casesOptim.append("GPU CSC_LOOP_ROWS")
     #conf.casesOptim.append("GPU CSC_ATOMIC")
+    #conf.casesOptim.append("GPU CUID")
+    #conf.casesOptim.append("GPU CSD")
+    #conf.casesOptim.append("GPU CSR_SHARED")
+    #conf.casesOptim.append("GPU CSR_SHARED_DB")
+    #conf.casesOptim.append("GPU CSR_SHARED_DB_JAC")
 
     conf.plotYKey = "Speedup timeBiConjGrad"
-    #conf.plotYKey = "Speedup timeCVode"
-    # conf.plotYKey = "Speedup counterLS"
-    #conf.plotYKey = "Speedup normalized timeLS"
-    # conf.plotYKey = "Speedup normalized computational timeLS"
-    # conf.plotYKey = "Speedup counterBCG"
-    # conf.plotYKey = "Speedup normalized counterBCG"
-    # conf.plotYKey = "Speedup total iterations - counterBCG"
-    # conf.plotYKey = "Speedup BCG iteration (Comp.timeLS/counterBCG)"
-    #conf.plotYKey = "Speedup timecvStep"
-    # conf.plotYKey = "Speedup timecvStep normalized by countercvStep"
-    # conf.plotYKey = "Speedup countercvStep"
-    # conf.plotYKey = "Speedup device timecvStep"
-    # conf.plotYKey = "Percentage data transfers CPU-GPU [%]"
-
-    #conf.plotYKey ="MAPE"
-    # conf.plotYKey ="SMAPE"
-    # conf.plotYKey ="NRMSE"
-    # conf.MAPETol = 1.0E-6
-
-    # conf.plotXKey = "MPI processes"
-    # conf.plotXKey = "GPUs"
 
     """END OF CONFIGURATION VARIABLES"""
 
@@ -873,6 +883,7 @@ def all_timesteps():
                 print("WARNING: Configured less cells than MPI processes, setting 1 cell per process")
                 conf.mpiProcessesCaseOptimList[i] = cellsProcesses
 
+    print("run_diffCells start")
     run_diffCells(conf)
 
     if get_is_sbatch() is False:

@@ -274,6 +274,7 @@ typedef struct {
 
     int nnz;
     int lenjA;
+    int leniA;
     double *yout;
     double *cv_Vabstol;
 
@@ -348,7 +349,6 @@ typedef struct {
 
     //Auxiliar variables
     double* dsavedJ;
-    int*    djsavedJ;
     int*    disavedJ;
 
     ModelDataVariable mdvCPU;

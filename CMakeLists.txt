@@ -7,6 +7,12 @@ option(CSC_LOOP_ROWS "" OFF)
 option(CSD "Sparse Determinant" OFF)
 option(CBD "Boolean Determinant" OFF)
 option(CUID "Diagonal Indexed to A" OFF)
+option(CSR_VECTOR "" OFF)
+option(CSR_ADAPTIVE "" OFF)
+option(CSR_SHARED "" OFF)
+option(CSR_SHARED_DB "" OFF)
+option(CSR_SHARED_DB_JAC "" OFF)
+option(use_maxrregcount32 "" OFF)
 
 if(CSR)
     add_definitions(-DCSR)
@@ -32,11 +38,33 @@ if(CUID)
     add_definitions(-DCUID)
 endif()
 
+if(CSR_VECTOR)
+    add_definitions(-DCSR_VECTOR)
+endif()
+
+if(CSR_ADAPTIVE)
+    add_definitions(-DCSR_ADAPTIVE)
+endif()
+
+if(CSR_SHARED)
+    add_definitions(-DCSR_SHARED)
+endif()
+
+if(CSR_SHARED_DB)
+    add_definitions(-DCSR_SHARED_DB)
+endif()
+
+if(CSR_SHARED_DB_JAC)
+    add_definitions(-DCSR_SHARED_DB_JAC)
+endif()
+
 enable_language(CUDA)
 
-#set(CMAKE_CUDA_STANDARD 14)
-set(STD_CUDA_FLAGS "-lineinfo -arch=compute_70 -code=sm_70 -dc")
-#set(WIN32 ON)
+if(use_maxrregcount32)
+    set(STD_CUDA_FLAGS "--maxrregcount 32 -lineinfo -arch=compute_70 -code=sm_70 -dc")
+else()
+    set(STD_CUDA_FLAGS "-O3 -lineinfo -arch=compute_70 -code=sm_70 -dc")
+endif()
 
 set(CAMP_CUDA_SRC libsolv.cu)
 set_source_files_properties(${CAMP_CUDA_SRC} PROPERTIES COMPILE_FLAGS

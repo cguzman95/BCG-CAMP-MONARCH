@@ -20,9 +20,6 @@
 #define CAMP_DEBUG_GPU
 //#define DEBUG_BCG_COUNTER
 
-const int N = 16;
-const int blocksize = 16;
-
 static void HandleError(cudaError_t err,
     const char* file,
     int line) {
@@ -69,6 +66,9 @@ void hello(char* a, int* b)
 
 void hello_test() {
 
+  const int N = 16;
+  const int blocksize = 16;
+
     char a[N] = "Hello \0\0\0\0\0\0";
     int b[N] = { 15, 10, 6, 0, -11, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
@@ -79,7 +79,7 @@ void hello_test() {
 
     printf("HANDLE_ERROR %s", a);
 
-    HANDLE_ERROR(cudaMalloc((void**)&ad, csize));
+    cudaMalloc((void**)&ad, csize);
     //cudaMalloc( (void**)&ad, csize );
 
     cudaMalloc((void**)&bd, isize);

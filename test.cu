@@ -964,7 +964,6 @@ void solveGPU_block_thr(int blocks, int threads_block, int n_shr_memory, int n_s
         );
 #endif
 
-
 }
 
 //solveGPU_block: Each block will compute only a cell/group of cells
@@ -1043,7 +1042,6 @@ void BCG() {
   char confPath [255];
   int nDevices;
   int n_cells;
-
 
   FILE* fp;
   fp = fopen("../data/conf.txt", "r");

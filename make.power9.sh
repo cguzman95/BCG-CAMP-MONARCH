@@ -25,9 +25,10 @@ elif [ $use_nsight == "true" ]; then
 
 else
 
-time python ../TestMonarch.py
-#make -j 4
-#./test
+make -j 4
+./test
+
+#time python ../TestMonarch.py
 
 #cmake . -DENABLE_CSR=OFF
 #make VERBOSE=1 CPPFLAGS="-DCSR" CXXFLAGS="-DCSR" CFLAGS="-DCSR" CUDA="-DCSR" CUDAFLAGS="-DCSR"

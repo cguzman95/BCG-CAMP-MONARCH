@@ -756,8 +756,14 @@ def all_timesteps():
     conf.chemFile = "confBCG1Cell.txt"
     #conf.chemFile = "confBCG10Cells.txt"
 
-    #conf.profileCuda = ""
-    conf.profileCuda = "nvprof"
+    #print("exec_str:", exec_str, "ncells", conf.nCells)#, conf.diffCells, conf.caseGpuCpu, conf.caseImpl, conf.mpiProcesses,conf.nGPUs)
+    exec_str="build/test ncells 1000"
+    os.system(exec_str)
+
+    exit(0)
+
+    conf.profileCuda = ""
+    #conf.profileCuda = "nvprof"
     #conf.profileCuda = "nsight"
 
     #conf.is_export = get_is_sbatch()

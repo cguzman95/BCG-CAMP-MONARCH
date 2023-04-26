@@ -116,7 +116,7 @@ def getCaseName(conf):
     return case_multicells_onecell_name
 
 def writeConfBCG(conf):
-    file1 = open("../data/conf.txt", "w")
+    file1 = open("data/conf.txt", "w")
 
     file1.write(conf.chemFile+"\n")
     file1.write(str(conf.nGPUs)+"\n")
@@ -125,7 +125,7 @@ def writeConfBCG(conf):
 
     file1.close()
 
-    conf_path = "../data/confCmakeVars.json"
+    conf_path = "data/confCmakeVars.json"
     with open(conf_path, 'w', encoding='utf-8') as jsonFile:
         json.dump(conf.cmakeVars.__dict__, jsonFile, indent=4, sort_keys=False)
 
@@ -370,11 +370,7 @@ def run(conf):
         is_import, data_path = False, tmp_path
 
     if not is_import:
-        #with open("../data/conf.txt", 'r') as fp:
-            #caseImplImported = fp.readlines()[3].strip()
-        #print(caseImplImported, conf.caseImpl)
-
-        conf_name="../data/confCmakeVars.json"
+        conf_name="data/confCmakeVars.json"
         jsonFile = open(conf_name)
         conf_imported = json.load(jsonFile)
         conf_dict = vars(conf.cmakeVars)
@@ -756,14 +752,12 @@ def all_timesteps():
     conf.chemFile = "confBCG1Cell.txt"
     #conf.chemFile = "confBCG10Cells.txt"
 
-    #print("exec_str:", exec_str, "ncells", conf.nCells)#, conf.diffCells, conf.caseGpuCpu, conf.caseImpl, conf.mpiProcesses,conf.nGPUs)
-    exec_str="build/test ncells 1000"
-    os.system(exec_str)
+    #print("hola")
+    #exit(0)
 
-    exit(0)
 
-    conf.profileCuda = ""
-    #conf.profileCuda = "nvprof"
+    #conf.profileCuda = ""
+    conf.profileCuda = "nvprof"
     #conf.profileCuda = "nsight"
 
     #conf.is_export = get_is_sbatch()

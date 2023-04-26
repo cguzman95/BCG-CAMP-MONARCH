@@ -1044,7 +1044,6 @@ void BCG() {
   int nDevices;
   int n_cells;
 
-
   FILE* fp;
   fp = fopen("../data/conf.txt", "r");
   if (fp == NULL)

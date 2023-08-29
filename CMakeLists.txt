@@ -60,11 +60,7 @@ endif()
 
 enable_language(CUDA)
 
-if(use_maxrregcount32)
-    set(STD_CUDA_FLAGS "--maxrregcount 32 -lineinfo -arch=compute_70 -code=sm_70 -dc")
-else()
-    set(STD_CUDA_FLAGS "-O3 -lineinfo -arch=compute_70 -code=sm_70 -dc")
-endif()
+set(STD_CUDA_FLAGS "-O3 -g -G -arch=compute_70 -code=sm_70 -dc")
 
 set(CAMP_CUDA_SRC libsolv.cu)
 set_source_files_properties(${CAMP_CUDA_SRC} PROPERTIES COMPILE_FLAGS

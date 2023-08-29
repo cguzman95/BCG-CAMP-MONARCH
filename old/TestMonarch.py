@@ -42,7 +42,6 @@ class TestMonarch:
         self.caseGpuCpu = ""
         self.caseImpl = ""
         self.mpiProcesses = 1
-        self.allocatedNodes = 1
         self.allocatedTasksPerNode = 160
         self.nGPUs = 1
         # Cases configuration
@@ -84,16 +83,6 @@ class TestMonarch:
         self._chemFile = new_chemFile
 
 
-def get_is_sbatch():
-    try:
-        if sys.argv[1]:
-            return True
-        else:
-            return False
-    except Exception:
-        return False
-
-
 def getCaseName(conf):
     case_multicells_onecell_name = ""
     # if conf.caseImpl != "BDF" and conf.caseGpuCpu == "GPU":
@@ -116,7 +105,7 @@ def getCaseName(conf):
     return case_multicells_onecell_name
 
 def writeConfBCG(conf):
-    file1 = open("data/conf.txt", "w")
+    file1 = open("../data/conf.txt", "w")
 
     file1.write(conf.chemFile+"\n")
     file1.write(str(conf.nGPUs)+"\n")
@@ -125,210 +114,9 @@ def writeConfBCG(conf):
 
     file1.close()
 
-    conf_path = "data/confCmakeVars.json"
+    conf_path = "../data/confCmakeVars.json"
     with open(conf_path, 'w', encoding='utf-8') as jsonFile:
         json.dump(conf.cmakeVars.__dict__, jsonFile, indent=4, sort_keys=False)
-
-def get_commit_hash():
-    try:
-        commit = subprocess.check_output(
-            ['git', 'rev-parse', '--short', 'HEAD']).decode().strip()
-    # Not copying .git folder into docker container
-    except subprocess.CalledProcessError:
-        commit = ""
-    # print(' > Git Hash: {}'.format(commit))
-    return str(commit)
-
-
-def remove_to_tmp(conf, sbatch_job_id):
-    init_path = os.path.abspath(os.getcwd())
-    os.chdir("../../..")
-    exportPath = conf.exportPath
-
-    extra_str_name = " bind-to-none"
-    now = datetime.datetime.now()
-    tmp_dir = exportPath + "/tmp/" + now.strftime("%d-%m-%Y")  # + extra_str_name
-    if not os.path.exists(tmp_dir):
-        os.makedirs(tmp_dir)
-        os.makedirs(tmp_dir + "/conf")
-        os.makedirs(tmp_dir + "/data")
-
-    conf_path = exportPath + "/conf"
-    filenames = next(walk(conf_path), (None, None, []))[2]
-
-    if not filenames:
-        print("WARNING: Import folder is empty. Path:", os.path.abspath(os.getcwd()) + "/" + conf_path)
-        os.chdir(init_path)
-        raise
-
-    data_path = exportPath + "/data/"
-    # print("filenames:",filenames)
-    # print("conf_path",os.path.abspath(os.getcwd())+"/"+conf_path)
-    for filename in filenames:
-        dir_to_extract = conf_path + "/"
-        basename = os.path.splitext(filename)[0]
-        path_to_zip_file = dir_to_extract + basename + ".zip"
-        with zipfile.ZipFile(path_to_zip_file, 'r') as zip_ref:
-            zip_ref.extractall(dir_to_extract)
-        conf_name = conf_path + "/" + basename + ".json"
-        jsonFile = open(conf_name)
-        conf_imported = json.load(jsonFile)
-        os.remove(conf_name)
-        conf_dict = vars(conf)
-        # print("conf_dict",conf_dict)
-        is_same_conf_case = True
-        if conf_imported["sbatch_job_id"] == sbatch_job_id or conf_imported["sbatch_job_id"] == "-" + sbatch_job_id:
-            tmp_dir_conf = tmp_dir + "/conf/" + basename + ".zip"
-            # os.remove(path_to_zip_file)
-            os.rename(path_to_zip_file, tmp_dir_conf)
-            # print("Moved conf from",os.path.abspath(os.getcwd()) + "/" + path_to_zip_file, "to", tmp_dir)
-            path_to_zip_file = data_path + basename + ".zip"
-            # os.remove(path_to_zip_file)
-            tmp_dir_data = tmp_dir + "/data/" + basename + ".zip"
-            os.rename(path_to_zip_file, tmp_dir_data)
-            print("Moved data from", os.path.abspath(os.getcwd()) + "/" + path_to_zip_file, "to",
-                  os.path.abspath(os.getcwd()) + "/" + tmp_dir)
-
-    raise
-
-    return True
-
-
-def import_data(conf, tmp_path):
-    init_path = os.path.abspath(os.getcwd())
-    is_import = False
-    os.chdir("../../..")
-    exportPath = conf.exportPath
-    new_path = tmp_path
-
-    if not os.path.exists(exportPath):
-        os.chdir(init_path)
-        return False, new_path
-
-    conf_path = exportPath + "/conf"
-    if not os.path.exists(conf_path):
-        os.chdir(init_path)
-        return False, new_path
-
-    filenames = next(walk(conf_path), (None, None, []))[2]
-
-    if not filenames:
-        print("WARNING: Import folder is empty. Path:", os.path.abspath(os.getcwd()) + "/" + conf_path)
-        os.chdir(init_path)
-        return False, new_path
-
-    data_path = exportPath + "/data/"
-    # print("filenames:",filenames)
-    # print("conf_path",os.path.abspath(os.getcwd())+"/"+conf_path)
-    conf_defaultClass = TestMonarch()
-    conf_default = vars(conf_defaultClass)
-    for filename in filenames:
-        dir_to_extract = conf_path + "/"
-        basename = os.path.splitext(filename)[0]
-        path_to_zip_file = dir_to_extract + basename + ".zip"
-        # print("import_data path_to_zip_file",path_to_zip_file)
-        with zipfile.ZipFile(path_to_zip_file, 'r') as zip_ref:
-            zip_ref.extractall(dir_to_extract)
-        conf_name = conf_path + "/" + basename + ".json"
-        jsonFile = open(conf_name)
-        conf_imported = json.load(jsonFile)
-        os.remove(conf_name)
-        conf_dict = vars(conf)
-        # print("conf_dict",conf_dict)
-        is_same_conf_case = True
-        for confKey in conf_dict:
-            # print("confKey",confKey)
-            if confKey == "is_start_cases_attributes":
-                # print("BREAK")
-                break
-            if conf_imported["timeSteps"] >= conf_dict["timeSteps"]:
-                conf_imported["timeSteps"] = conf_dict["timeSteps"]
-            if conf_dict["commit"] == "MATCH_IMPORTED_CONF":
-                conf.commit = get_commit_hash()
-            else:
-                conf_imported["commit"] = conf_dict["commit"]
-            # print("confKey",confKey)
-            if confKey not in conf_imported:
-                conf_imported[confKey] = conf_default[confKey]
-
-            # if "allocatedTasksPerNode" not in conf_imported:
-            # conf_imported["allocatedTasksPerNode"] = 160
-            # if "allocatedNodes" not in conf_imported:
-            # conf_imported["allocatedNodes"] = 1
-            # if "nGPUs" not in conf_imported:
-            # conf_imported["nGPUs"] = 1
-
-            if conf_imported[confKey] != conf_dict[confKey]:
-                # print(conf_dict[confKey])
-                is_same_conf_case = False
-        # print("basename",basename)
-        # if basename == "16-04-2022-02.30.57-1649810070774628350":
-        # print("conf_imported",conf_imported,"conf_dict",conf_dict)
-        if is_same_conf_case:
-            is_import = True
-            dir_to_extract = data_path
-            path_to_zip_file = data_path + basename + ".zip"
-
-            try:
-                with zipfile.ZipFile(path_to_zip_file, 'r') as zip_ref:
-                    zip_ref.extractall(dir_to_extract)
-            except BaseException as err:
-                print("path_to_zip_file", path_to_zip_file)
-                print(err)
-                raise
-            new_path = os.path.abspath(os.getcwd()) + "/" + dir_to_extract + basename + ".csv"
-            print("Imported data from", new_path)
-            break
-
-    os.chdir(init_path)
-
-    return is_import, new_path
-
-
-def export(conf, data_path):
-    init_path = os.path.abspath(os.getcwd())
-    data_path_abs = os.path.abspath(os.getcwd()) + "/" + data_path
-    exportPath = conf.exportPath
-    conf.commit = get_commit_hash()
-    if len(sys.argv) > 1:
-        conf.sbatch_job_id = sys.argv[1]
-
-    os.chdir("../../..")
-    print(os.path.abspath(os.getcwd()) + "/" + exportPath)
-    if not os.path.exists(exportPath):
-        os.makedirs(exportPath)
-
-    conf_dir = exportPath + "/conf"
-    if not os.path.exists(conf_dir):
-        os.makedirs(conf_dir)
-    now = datetime.datetime.now()
-    basename = now.strftime("%d-%m-%Y-%H.%M.%S") + "-" + conf.sbatch_job_id
-    conf_path = conf_dir + "/" + basename + ".json"
-    with open(conf_path, 'w', encoding='utf-8') as jsonFile:
-        json.dump(conf.__dict__, jsonFile, indent=4, sort_keys=False)
-    conf_name = basename + ".json"
-    path_to_zip_file = conf_dir + "/" + basename + ".zip"
-    zipfile.ZipFile(path_to_zip_file, mode='w').write(conf_path, arcname=conf_name)
-    os.remove(conf_path)
-    print("Configuration saved to", os.path.abspath(os.getcwd()) + path_to_zip_file)
-
-    path_to_zip_file = exportPath + "/data"
-    if not os.path.exists(path_to_zip_file):
-        os.makedirs(path_to_zip_file)
-    path_to_zip_file = exportPath + "/data/" + basename + ".zip"
-    new_data_name = basename + ".csv"
-    new_data_path = exportPath + "/data/" + new_data_name
-    os.rename(data_path_abs, new_data_path)
-    zipfile.ZipFile(path_to_zip_file, mode='w').write(new_data_path, arcname=new_data_name)
-    os.rename(new_data_path, data_path_abs)
-
-    print("Data saved to", os.path.abspath(os.getcwd()) + "/" + path_to_zip_file)
-
-    if os.path.getsize(exportPath) > 1000000000:
-        print("WARNING: More than 1GB saved in ", os.path.abspath(os.getcwd()) + "/" + exportPath)
-        # raise
-
-    os.chdir(init_path)
 
 
 def run(conf):
@@ -370,7 +158,11 @@ def run(conf):
         is_import, data_path = False, tmp_path
 
     if not is_import:
-        conf_name="data/confCmakeVars.json"
+        #with open("../data/conf.txt", 'r') as fp:
+            #caseImplImported = fp.readlines()[3].strip()
+        #print(caseImplImported, conf.caseImpl)
+
+        conf_name="../data/confCmakeVars.json"
         jsonFile = open(conf_name)
         conf_imported = json.load(jsonFile)
         conf_dict = vars(conf.cmakeVars)
@@ -726,7 +518,6 @@ def plot_cases(conf):
     namex = plot_x_key
     datay = conf.datacolumns
 
-    print("Nodes:", conf.allocatedNodes)
     if namex == "Timesteps":
         print("Mean:", round(np.mean(datay), 2))
         print("Std", round(np.std(datay), 2))
@@ -752,23 +543,9 @@ def all_timesteps():
     conf.chemFile = "confBCG1Cell.txt"
     #conf.chemFile = "confBCG10Cells.txt"
 
-    #print("hola")
-    #exit(0)
-
-
-    #conf.profileCuda = ""
-    conf.profileCuda = "nvprof"
+    conf.profileCuda = ""
+    #conf.profileCuda = "nvprof"
     #conf.profileCuda = "nsight"
-
-    #conf.is_export = get_is_sbatch()
-    # conf.is_export = True
-    conf.is_export = False
-
-    #conf.is_import = True
-    conf.is_import = False
-
-    # conf.commit = "MATCH_IMPORTED_CONF"
-    conf.commit = ""
 
     conf.nGPUsCaseBase = 1
     # conf.nGPUsCaseBase = 4
@@ -777,7 +554,6 @@ def all_timesteps():
     # conf.nGPUsCaseOptimList = [1]
     # conf.nGPUsCaseOptimList = [1,2,3,4]
 
-    #conf.mpi = "yes"
     conf.mpi = "no"
 
     conf.mpiProcessesCaseBase = 1
@@ -788,16 +564,12 @@ def all_timesteps():
     # conf.mpiProcessesCaseOptimList = [10,20,40]
     # conf.mpiProcessesCaseOptimList = [1,4,8,16,32,40]
 
-    conf.allocatedNodes = 1
-    # conf.allocatedNodes = 4
-    # conf.allocatedNodes = get_allocatedNodes_sbatch() #todo
-
     conf.allocatedTasksPerNode = 160
     # conf.allocatedTasksPerNode = 40
     # conf.allocatedTasksPerNode = 320
     # conf.allocatedTasksPerNode = get_ntasksPerNode_sbatch() #todo
 
-    conf.cells = [1000]
+    conf.cells = [100]
     #conf.cells = [100, 1000, 10000, 100000]
 
     conf.timeSteps = 1
@@ -809,7 +581,7 @@ def all_timesteps():
     #conf.cmakeVarsBase.maxrregcount = "use_maxrregcount32"
 
     #conf.cmakeVarsOptim.maxrregcount = ""
-    conf.cmakeVarsOptim.maxrregcount = "use_maxrregcount32"
+    #conf.cmakeVarsOptim.maxrregcount = "use_maxrregcount32"
 
     #conf.caseBase = "GPU CSC_ATOMIC"
     conf.caseBase = "GPU CSR"

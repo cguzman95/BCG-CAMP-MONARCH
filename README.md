@@ -1,5 +1,5 @@
 # MultiGPUOpenMPCAMP
 
-Run "./compile.libs.camp.sh" to compile CAMP from scratch
+Run "./compile.power9.sh" to compile from scratch
 
 Run "./make.camp.power9.sh" to execute test

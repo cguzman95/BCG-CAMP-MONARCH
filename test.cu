@@ -1142,9 +1142,6 @@ void BCG() {
   }
 */
 
-
-
-
 #ifdef CSR
   printf("CSR\n");
 #elif CSC_ATOMIC
@@ -1178,7 +1175,6 @@ void BCG() {
       memcpy(diag + i * mGPU0->nrows, diag_aux, mGPU0->nrows * sizeof(double));
       memcpy(x + i * mGPU0->nrows, x_aux, mGPU0->nrows * sizeof(double));
       memcpy(tempv + i * mGPU0->nrows, tempv_aux, mGPU0->nrows * sizeof(double));
-
   }
 
   mGPU0->lenjA=mGPU0->nnz;

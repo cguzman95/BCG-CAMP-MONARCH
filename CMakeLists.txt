@@ -60,7 +60,7 @@ endif()
 
 enable_language(CUDA)
 
-set(STD_CUDA_FLAGS "-O3 -g -G -arch=compute_70 -code=sm_70 -dc")
+set(STD_CUDA_FLAGS "-g -G -arch=compute_70 -code=sm_70")
 
 set(CAMP_CUDA_SRC libsolv.cu)
 set_source_files_properties(${CAMP_CUDA_SRC} PROPERTIES COMPILE_FLAGS

@@ -6,10 +6,11 @@ cd build
 #make -j 4 #VERBOSE=1
 
 use_nvprof="false"
-#use_nsight="false"
-use_nsight="true"
+use_nsight="false"
+#use_nsight="true"
 #use_nvprof="true"
 
+make -j 4
 if [ use_nvprof == "true" ]; then
 
 nvprof --analysis-metrics -f -o ../profile.nvprof ./test
@@ -20,7 +21,6 @@ elif [ $use_nsight == "true" ]; then
 
 else
 
-make -j 4
 ./test
 
 #time python ../TestMonarch.py

@@ -1,66 +1,11 @@
 cmake_minimum_required(VERSION 3.10)
 project(MultiGPUOpenMPCAMP)
 
-option(CSR "" OFF)
-option(CSCAtomic "" OFF)
-option(CSC_LOOP_ROWS "" OFF)
-option(CSD "Sparse Determinant" OFF)
-option(CBD "Boolean Determinant" OFF)
-option(CUID "Diagonal Indexed to A" OFF)
-option(CSR_VECTOR "" OFF)
-option(CSR_ADAPTIVE "" OFF)
-option(CSR_SHARED "" OFF)
-option(CSR_SHARED_DB "" OFF)
-option(CSR_SHARED_DB_JAC "" OFF)
-option(use_maxrregcount32 "" OFF)
-
-if(CSR)
-    add_definitions(-DCSR)
-endif()
-
-if(CSC_ATOMIC)
-    add_definitions(-DCSC_ATOMIC)
-endif()
-
-if(CSC_LOOP_ROWS)
-    add_definitions(-DCSC_LOOP_ROWS)
-endif()
-
-if(CSD)
-    add_definitions(-DCSD)
-endif()
-
-if(CBD)
-    add_definitions(-DCBD)
-endif()
-
-if(CUID)
-    add_definitions(-DCUID)
-endif()
-
-if(CSR_VECTOR)
-    add_definitions(-DCSR_VECTOR)
-endif()
-
-if(CSR_ADAPTIVE)
-    add_definitions(-DCSR_ADAPTIVE)
-endif()
-
-if(CSR_SHARED)
-    add_definitions(-DCSR_SHARED)
-endif()
-
-if(CSR_SHARED_DB)
-    add_definitions(-DCSR_SHARED_DB)
-endif()
-
-if(CSR_SHARED_DB_JAC)
-    add_definitions(-DCSR_SHARED_DB_JAC)
-endif()
+add_definitions(-DCSC_ATOMIC)
 
 enable_language(CUDA)
 
-set(STD_CUDA_FLAGS "-g -G -arch=compute_70 -code=sm_70")
+set(STD_CUDA_FLAGS "-O3 -arch=compute_70 -code=sm_70")
 
 set(CAMP_CUDA_SRC libsolv.cu)
 set_source_files_properties(${CAMP_CUDA_SRC} PROPERTIES COMPILE_FLAGS

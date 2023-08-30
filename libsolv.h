@@ -28,8 +28,6 @@ typedef struct {
   double *dt;
   double *ds;
   double *dy;
-  double *dz;//todo remove
-  double *dAx2;//todo remove
 } ModelDataGPU;
 
 void solveGPU_block(ModelDataGPU* mGPU);

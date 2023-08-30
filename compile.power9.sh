@@ -20,7 +20,5 @@ cd build
 mkdir out
 
 cmake ..
-
-make -j 4 VERBOSE=1
-./test
-cd ../..
+cd ../
+./make.run.sh

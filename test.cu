@@ -664,8 +664,8 @@ void BCG() {
 
 #ifdef CSR
   printf("CSR\n");
-#elif CSC_ATOMIC
-  printf("CSC_ATOMIC\n");
+#elif CSC
+  printf("CSC_SHARED\n");
   swapCSC_CSR_BCG(mGPU0,iA_aux,jA_aux,A_aux);
 #elif CSC_LOOP_ROWS
   printf("CSC_LOOP_ROWS\n");
@@ -735,8 +735,6 @@ void BCG() {
     double** dt = &mGPU->dt;
     double** ds = &mGPU->ds;
     double** dy = &mGPU->dy;
-    double** dz = &mGPU->dz;
-    double** dAx2 = &mGPU->dAx2;
     int nrows = mGPU->nrows;
     cudaMalloc(dr0, nrows * sizeof(double));
     cudaMalloc(dr0h, nrows * sizeof(double));
@@ -745,8 +743,6 @@ void BCG() {
     cudaMalloc(dt, nrows * sizeof(double));
     cudaMalloc(ds, nrows * sizeof(double));
     cudaMalloc(dy, nrows * sizeof(double));
-    cudaMalloc(dz, nrows * sizeof(double));//todo remove
-    cudaMalloc(dAx2, nrows * sizeof(double));//todo remove
   }
 
   int offset_nnz = 0;

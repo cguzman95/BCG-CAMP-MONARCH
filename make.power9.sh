@@ -21,7 +21,15 @@ elif [ $use_nsight == "true" ]; then
 
 else
 
-./test
+  IS_DDT_OPEN=false
+  if pidof -x $(ps cax | grep ddt) >/dev/null; then
+        IS_DDT_OPEN=true
+  fi
+  if [ "$IS_DDT_OPEN" = true ]; then
+    ddt --connect ./test
+  else
+    ./test
+   fi
 
 #time python ../TestMonarch.py
 

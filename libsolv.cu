@@ -5,6 +5,319 @@
 
 #include "libsolv.h"
 
+#ifndef DEV_OLD_FUNCTIONS
+
+
+// Device functions (equivalent to global functions but in device to allow calls from gpu)
+__device__ void cudaDevicematScaleAddI(int nrows, double* dA, int* djA, int* diA, double alpha)
+{
+  int row= threadIdx.x + blockDim.x*blockIdx.x;
+  int jstart = diA[row];
+  int jend   = diA[row+1];
+  for(int j=jstart; j<jend; j++)
+  {
+    if(djA[j]==row)
+    {
+      dA[j] = 1.0 + alpha*dA[j];
+    }
+    else{
+      dA[j] = alpha*dA[j];
+    }
+  }
+}
+
+// Diagonal precond
+__device__ void cudaDevicediagprecond(int nrows, double* dA, int* djA, int* diA, double* ddiag)
+{
+  int row= threadIdx.x + blockDim.x*blockIdx.x;
+  int jstart=diA[row];
+  int jend  =diA[row+1];
+  for(int j=jstart;j<jend;j++){
+    if(djA[j]==row){
+      if(dA[j]!=0.0)
+        ddiag[row]= 1.0/dA[j];
+      else{
+        ddiag[row]= 1.0;
+      }
+    }
+  }
+
+}
+
+// y = constant
+__device__ void cudaDevicesetconst(double* dy,double constant,int nrows)
+{
+  int row= threadIdx.x + blockDim.x*blockIdx.x;
+  dy[row]=constant;
+}
+
+
+// y= a*x+ b*y
+__device__ void cudaDeviceaxpby(double* dy,double* dx, double a, double b, int nrows)
+{
+  int row= threadIdx.x + blockDim.x*blockIdx.x;
+  dy[row]= a*dx[row] + b*dy[row];
+}
+
+// y = x
+__device__ void cudaDeviceyequalsx(double* dy,double* dx,int nrows)
+{
+  int row= threadIdx.x + blockDim.x*blockIdx.x;
+  dy[row]=dx[row];
+}
+
+__device__ void cudaDevicemin(double *g_odata, double in, volatile double *sdata, int n_shr_empty)
+{
+  unsigned int tid = threadIdx.x;
+  unsigned int i = blockIdx.x*blockDim.x + threadIdx.x;
+
+  __syncthreads();
+
+  sdata[tid] = in;
+
+  __syncthreads();
+  //first threads update empty positions
+  if(tid<n_shr_empty)
+    sdata[tid+blockDim.x]=sdata[tid];
+  __syncthreads(); //Not needed (should)
+
+  for (unsigned int s=(blockDim.x+n_shr_empty)/2; s>0; s>>=1)
+  {
+    if (tid < s){
+      if(sdata[tid + s] < sdata[tid] ) sdata[tid]=sdata[tid + s];
+    }
+    __syncthreads();
+  }
+
+  __syncthreads();
+  *g_odata = sdata[0];
+  __syncthreads();
+
+}
+
+__device__ void cudaDevicemaxI(int *g_odata, int in, volatile double *sdata, int n_shr_empty)
+{
+  unsigned int tid = threadIdx.x;
+  unsigned int i = blockIdx.x*blockDim.x + threadIdx.x;
+
+  __syncthreads();
+
+  sdata[tid] = in;
+
+  __syncthreads();
+  //first threads update empty positions
+  if(tid<n_shr_empty)
+    sdata[tid+blockDim.x]=sdata[tid];
+  __syncthreads(); //Not needed (should)
+
+  for (unsigned int s=(blockDim.x+n_shr_empty)/2; s>0; s>>=1)
+  {
+    if (tid < s){
+      if(sdata[tid + s] > sdata[tid] ) sdata[tid]=sdata[tid + s];
+    }
+    __syncthreads();
+  }
+
+  __syncthreads();
+  *g_odata = sdata[0];
+  __syncthreads();
+
+}
+
+__device__ void cudaDeviceaddI(int *g_odata, int in, volatile double *sdata, int n_shr_empty)
+{
+  //extern __shared__ double sdata[];
+  unsigned int tid = threadIdx.x;
+  unsigned int i = blockIdx.x*blockDim.x + threadIdx.x;
+
+  __syncthreads();
+
+  sdata[tid] = in;
+
+  __syncthreads();
+
+  //first threads update empty positions
+  if(tid<n_shr_empty)
+    sdata[tid+blockDim.x]=sdata[tid];
+
+  __syncthreads(); //Not needed (should)
+
+  //if(blockIdx.x==0)printf("i %d in %le sdata[tid] %le\n",i,in,sdata[tid]);
+
+  for (unsigned int s=(blockDim.x+n_shr_empty)/2; s>0; s>>=1)
+  {
+    if (tid < s){//&& sdata[tid + s]!=0.
+      //if(sdata[tid + s] < sdata[tid] ) sdata[tid]=sdata[tid + s];
+      sdata[tid] += sdata[tid + s];
+    }
+    __syncthreads();
+  }
+
+  __syncthreads();
+  *g_odata = sdata[0];
+  __syncthreads();
+
+}
+
+__device__ void warpReduce(volatile double *sdata, unsigned int tid) {
+  unsigned int blockSize = blockDim.x;
+  if (blockSize >= 64) sdata[tid] += sdata[tid + 32];
+  if (blockSize >= 32) sdata[tid] += sdata[tid + 16];
+  if (blockSize >= 16) sdata[tid] += sdata[tid + 8];
+  if (blockSize >= 8) sdata[tid] += sdata[tid + 4];
+  if (blockSize >= 4) sdata[tid] += sdata[tid + 2];
+  if (blockSize >= 2) sdata[tid] += sdata[tid + 1];
+}
+
+
+__device__ void cudaDevicedotxy(double *g_idata1, double *g_idata2,
+                                double *g_odata, int n_shr_empty)
+{
+  extern __shared__ double sdata[];
+  unsigned int tid = threadIdx.x;
+  unsigned int i = blockIdx.x*blockDim.x + threadIdx.x;
+
+  __syncthreads();
+
+  //Needed, when testing be careful with SRAM data remanesce https://stackoverflow.com/questions/22172881/why-does-my-kernels-shared-memory-seems-to-be-initialized-to-zero
+
+  //first threads update empty positions
+  if(tid<n_shr_empty)
+    sdata[tid+blockDim.x]=0.;
+
+  __syncthreads();
+  sdata[tid] = g_idata1[i]*g_idata2[i];
+  __syncthreads();
+
+  /*
+    for (unsigned int s=(blockDim.x+n_shr_empty)/2; s>0; s>>=1)
+    {
+      if (tid < s)
+        sdata[tid] += sdata[tid + s];
+      __syncthreads();
+    }
+    */
+
+  //todo treat case deriv_length < 32
+  //maybe https://github.com/cudpp/cudpp/blob/master/src/cudpp/kernel/reduce_kernel.cuh
+
+
+  unsigned int blockSize = blockDim.x+n_shr_empty;
+
+  // do reduction in shared mem
+  if ((blockSize >= 1024) && (tid < 512)) {
+    sdata[tid] += sdata[tid + 512];
+  }
+
+  __syncthreads();
+
+  if ((blockSize >= 512) && (tid < 256)) {
+    sdata[tid] += sdata[tid + 256];
+  }
+
+  __syncthreads();
+
+  if ((blockSize >= 256) && (tid < 128)) {
+    sdata[tid] += sdata[tid + 128];
+  }
+
+  __syncthreads();
+
+  if ((blockSize >= 128) && (tid < 64)) {
+    sdata[tid] += sdata[tid + 64];
+  }
+
+  __syncthreads();
+
+  if (tid < 32) warpReduce(sdata, tid);
+
+  __syncthreads();//not needed?
+
+  *g_odata = sdata[0];
+  __syncthreads();
+
+
+}
+
+// z= a*z + x + b*y
+__device__ void cudaDevicezaxpbypc(double* dz, double* dx,double* dy, double a, double b, int nrows)
+{
+  int row= threadIdx.x + blockDim.x*blockIdx.x;
+  dz[row]=a*dz[row]  + dx[row] + b*dy[row];
+}
+
+// z= x*y
+__device__ void cudaDevicemultxy(double* dz, double* dx,double* dy, int nrows)
+{
+  int row= threadIdx.x + blockDim.x*blockIdx.x;
+  dz[row]=dx[row]*dy[row];
+}
+
+// z= a*x + b*y
+__device__ void cudaDevicezaxpby(double a, double* dx, double b, double* dy, double* dz, int nrows)
+{
+  int row= threadIdx.x + blockDim.x*blockIdx.x;
+  dz[row]=a*dx[row] + b*dy[row];
+}
+
+// y= a*x + y
+__device__ void cudaDeviceaxpy(double* dy,double* dx, double a, int nrows)
+{
+  int row= threadIdx.x + blockDim.x*blockIdx.x;
+  dy[row]=a*dx[row] + dy[row];
+}
+
+// sqrt(sum ( (x_i*y_i)^2)/n)
+__device__ void cudaDeviceVWRMS_Norm(double *g_idata1, double *g_idata2, double *g_odata, int n, int n_shr_empty)
+{
+  extern __shared__ double sdata[];
+  unsigned int tid = threadIdx.x;
+  //unsigned int i = blockIdx.x*(blockDim.x*2) + threadIdx.x;
+  unsigned int i = blockIdx.x*blockDim.x + threadIdx.x;
+
+  __syncthreads();
+
+  //first threads update empty positions
+  if(tid<n_shr_empty)
+    sdata[tid+blockDim.x]=0.;
+
+  __syncthreads(); //Not needed (should)
+
+                    /*
+                      double mySum = (i < n) ? g_idata1[i]*g_idata1[i]*g_idata2[i]*g_idata2[i] : 0;
+                      if (i + blockDim.x < n)
+                        mySum += g_idata1[i+blockDim.x]*g_idata1[i+blockDim.x]*g_idata2[i+blockDim.x]*g_idata2[i+blockDim.x];
+                    */
+
+  __syncthreads();
+  sdata[tid] = g_idata1[i]*g_idata1[i]*g_idata2[i]*g_idata2[i];
+  __syncthreads();
+
+  for (unsigned int s=(blockDim.x+n_shr_empty)/2; s>0; s>>=1)
+  {
+    if (tid < s)
+      sdata[tid] += sdata[tid + s];
+
+    __syncthreads();
+  }
+
+  //if (tid == 0) g_odata[blockIdx.x] = sdata[0];
+  g_odata[0] = sqrt(sdata[0]/n);
+  //*g_odata = sqrt(sdata[0]/n);
+  __syncthreads();
+}
+
+// y=alpha*y
+__device__ void cudaDevicescaley(double* dy, double a, int nrows)
+{
+  int row= threadIdx.x + blockDim.x*blockIdx.x;
+  dy[row]=a*dy[row];
+}
+
+
+
+#endif
+
 __device__ void cudaDeviceSpmvCSR(double* dx, double* db, double* dA, int* djA, int* diA)
 {
   __syncthreads();
@@ -190,7 +503,7 @@ __device__ void cudaDeviceSpmvCSRReduce(double* dx, double* db, int nrows, doubl
 
 #endif
 
-__device__ void cudaDeviceSpmv(double* dx, double* db, double* dA, int* djA, int* diA)
+__device__ void cudaDeviceSpmv(double* dx, double* db, double* dA, int* djA, int* diA, int n_shr_empty)
 {
 #ifdef CSR
   cudaDeviceSpmvCSR(dx,db,dA,djA,diA);
@@ -272,48 +585,100 @@ __device__ void cudaDevicedotxy_2(double *g_idata1, double *g_idata2,
   __syncthreads();
 }
 
+//Algorithm: Biconjugate gradient
 __device__
-void solveBcgCudaDeviceCVODE(ModelDataGPU *md){
+    void solveBcgCuda(double* dA, int* djA, int* diA, double* dx, double* dtempv //Input data
+        , int nrows, int blocks, int n_shr_empty, int maxIt, int mattype
+        , int n_cells, double tolmax, double* ddiag //Init variables
+        , double* dr0, double* dr0h, double* dn0, double* dp0
+        , double* dt, double* ds, double* dAx2, double* dy, double* dz// Auxiliary vectors
+    )
+{
   int i = blockIdx.x * blockDim.x + threadIdx.x;
-  double alpha,rho0,omega0,beta,rho1,temp1,temp2;
-  alpha=rho0=omega0=beta=rho1=temp1=temp2=1.0;
-  md->dn0[i]=0.0;
-  md->dp0[i]=0.0;
-  cudaDeviceSpmv(md->dr0,md->dx,md->dA,md->djA,md->diA);
-  md->dr0[i]=md->dtempv[i]-md->dr0[i];
-  md->dr0h[i]=md->dr0[i];
-  int it=0;
-  while(it<1000 && temp1>1.0E-30){
-    cudaDevicedotxy(md->dr0, md->dr0h, &rho1, md->n_shr_empty);
-    beta = (rho1 / rho0) * (alpha / omega0);
-    md->dp0[i]=beta*md->dp0[i]+md->dr0[i]-md->dn0[i]*omega0*beta;
-    md->dy[i]=md->ddiag[i]*md->dp0[i];
-    cudaDeviceSpmv(md->dn0, md->dy, md->dA, md->djA, md->diA);
-    cudaDevicedotxy(md->dr0h, md->dn0, &temp1, md->n_shr_empty);
-    alpha = rho1 / temp1;
-    md->ds[i]=md->dr0[i]-alpha*md->dn0[i];
-    md->dx[i]+=alpha*md->dy[i];
-    md->dy[i]=md->ddiag[i]*md->ds[i];
-    cudaDeviceSpmv(md->dt, md->dy, md->dA, md->djA, md->diA);
-    md->dr0[i]=md->ddiag[i]*md->dt[i];
-    cudaDevicedotxy(md->dy, md->dr0, &temp1, md->n_shr_empty);
-    cudaDevicedotxy(md->dr0, md->dr0, &temp2, md->n_shr_empty);
-    omega0 = temp1 / temp2;
-    md->dx[i]+=omega0*md->dy[i];
-    md->dr0[i]=md->ds[i]-omega0*md->dt[i];
-    md->dt[i]=0.0;
-    cudaDevicedotxy(md->dr0, md->dr0, &temp1, md->n_shr_empty);
-    temp1 = sqrt(temp1);
-    rho0 = rho1;
-    it++;
+  unsigned int tid = threadIdx.x;
+  int active_threads = nrows;
+
+  //if(i<1){
+  if (i < active_threads) {
+#if defined(CSR_SHARED) || defined(CSR_SHARED_DB_JAC)
+    extern __shared__ double sdata[];
+    int nnz=diA[blockDim.x];
+    for(int j=diA[threadIdx.x]; j<diA[threadIdx.x+1]; j++){
+      sdata[j]=dA[j+nnz*blockIdx.x];
+    }__syncthreads();
+#endif
+    double alpha, rho0, omega0, beta, rho1, temp1, temp2;
+    alpha = rho0 = omega0 = beta = rho1 = temp1 = temp2 = 1.0;
+    cudaDevicesetconst(dn0, 0.0, nrows);
+    cudaDevicesetconst(dp0, 0.0, nrows);
+    cudaDeviceSpmv(dr0, dx, dA, djA, diA, n_shr_empty); //y=A*x
+    cudaDeviceaxpby(dr0, dtempv, 1.0, -1.0, nrows);
     __syncthreads();
+    cudaDeviceyequalsx(dr0h, dr0, nrows);
+    int it = 0;
+    do
+    {
+      __syncthreads();
+      cudaDevicedotxy(dr0, dr0h, &rho1, n_shr_empty);
+#if defined(CSR_SHARED) || defined(CSR_SHARED_DB_JAC)
+      for(int j=diA[threadIdx.x]; j<diA[threadIdx.x+1]; j++){
+        sdata[j]=dA[j+nnz*blockIdx.x];
+      }__syncthreads();
+#endif
+      __syncthreads();
+      beta = (rho1 / rho0) * (alpha / omega0);
+      __syncthreads();
+      cudaDevicezaxpbypc(dp0, dr0, dn0, beta, -1.0 * omega0 * beta, nrows);   //z = ax + by + c
+      __syncthreads();
+      cudaDevicemultxy(dy, ddiag, dp0, nrows);
+      __syncthreads();
+      cudaDevicesetconst(dn0, 0.0, nrows);
+      cudaDeviceSpmv(dn0, dy, dA, djA, diA,n_shr_empty);
+      cudaDevicedotxy(dr0h, dn0, &temp1, n_shr_empty);
+#if defined(CSR_SHARED) || defined(CSR_SHARED_DB_JAC)
+      for(int j=diA[threadIdx.x]; j<diA[threadIdx.x+1]; j++){
+        sdata[j]=dA[j+nnz*blockIdx.x];
+      }__syncthreads();
+#endif
+      __syncthreads();
+      alpha = rho1 / temp1;
+      cudaDevicezaxpby(1.0, dr0, -1.0 * alpha, dn0, ds, nrows);
+      __syncthreads();
+      cudaDevicemultxy(dz, ddiag, ds, nrows); // precond z=diag*s
+      cudaDeviceSpmv(dt, dz, dA, djA, diA, n_shr_empty);
+      __syncthreads();
+      cudaDevicemultxy(dAx2, ddiag, dt, nrows);
+      __syncthreads();
+      cudaDevicedotxy(dz, dAx2, &temp1, n_shr_empty);
+      __syncthreads();
+      cudaDevicedotxy(dAx2, dAx2, &temp2, n_shr_empty);
+      __syncthreads();
+      omega0 = temp1 / temp2;
+      cudaDeviceaxpy(dx, dy, alpha, nrows); // x=alpha*y +x
+      __syncthreads();
+      cudaDeviceaxpy(dx, dz, omega0, nrows);
+      __syncthreads();
+      cudaDevicezaxpby(1.0, ds, -1.0 * omega0, dt, dr0, nrows);
+      cudaDevicesetconst(dt, 0.0, nrows);
+      __syncthreads();
+      cudaDevicedotxy(dr0, dr0, &temp1, n_shr_empty);
+      temp1 = sqrtf(temp1);
+      rho0 = rho1;
+      __syncthreads();
+      it++;
+    } while (it<maxIt && temp1>tolmax);//while(it<maxIt && temp1>tolmax);
   }
 }
 
 __global__
-void cudaGlobalCVode(ModelDataGPU md_object) {
+void cudaGlobalCVode(ModelDataGPU md_object,double* dA, int* djA, int* diA, double* dx, double* dtempv //Input data
+                    , int nrows, int blocks, int n_shr_empty, int maxIt, int mattype
+                    , int n_cells, double tolmax, double* ddiag //Init variables
+                    , double* dr0, double* dr0h, double* dn0, double* dp0
+                    , double* dt, double* ds, double* dAx2, double* dy, double* dz) {
   ModelDataGPU *md = &md_object;
-  solveBcgCudaDeviceCVODE(md);
+  solveBcgCuda(dA, djA, diA, dx, dtempv, nrows, blocks, n_shr_empty, maxIt, mattype, n_cells,
+tolmax, ddiag, dr0, dr0h, dn0, dp0, dt, ds, dAx2, dy, dz);
 }
 
 int nextPowerOfTwoBCG(int v) {
@@ -329,11 +694,42 @@ int nextPowerOfTwoBCG(int v) {
 
 void solveGPU_block(ModelDataGPU* mGPU)
 {
+  //Init variables ("public")
+  int nrows = mGPU->nrows;
+  int nnz = mGPU->nnz;
+  int n_cells = mGPU->n_cells;
+  int maxIt = 1000;
+  double tolmax = 1.0e-30;
+  int mattype = 1;
+
+  // Auxiliary vectors ("private")
+  double* dr0 = mGPU->dr0;
+  double* dr0h = mGPU->dr0h;
+  double* dn0 = mGPU->dn0;
+  double* dp0 = mGPU->dp0;
+  double* dt = mGPU->dt;
+  double* ds = mGPU->ds;
+  double* dy = mGPU->dy;
+  double* dz = mGPU->dz;
+  double* dAx2 = mGPU->dAx2;
+
+  //Input variables
+  int* djA = mGPU->djA;
+  int* diA = mGPU->diA;
+  double* dA = mGPU->dA;
+  double* ddiag = mGPU->ddiag;
+  double* dx = mGPU->dx;
+  double* dtempv = mGPU->dtempv;
+
+
+
   int len_cell = mGPU->nrows / mGPU->n_cells;
   int threads_block = len_cell;
   int blocks = mGPU->n_cells;
   int n_shr_memory = nextPowerOfTwoBCG(len_cell);
-  mGPU->n_shr_empty = n_shr_memory - threads_block;
+  int n_shr_empty = mGPU->n_shr_empty = n_shr_memory - threads_block;
   cudaGlobalCVode<<< blocks, threads_block,
-    n_shr_memory * sizeof(double)>>>(*mGPU);
+    n_shr_memory * sizeof(double)>>>
+      (*mGPU,dA, djA, diA, dx, dtempv, nrows, blocks, n_shr_empty, maxIt, mattype, n_cells,
+       tolmax, ddiag, dr0, dr0h, dn0, dp0, dt, ds, dAx2, dy, dz);
 }

@@ -603,6 +603,14 @@ void BCG() {
   int n_cells_multiplier = n_cells/cellsConfBCG;
   fscanf(fp, "%d", &mGPU0->nrows);
   fscanf(fp, "%d", &mGPU0->nnz);
+  int maxIt, mattype;
+  fscanf(fp, "%d", &maxIt);
+#ifdef DEBUG_MAXIT
+  mGPU0->maxIt=1;
+#endif
+  fscanf(fp, "%d", &mattype);
+  double tolmax;
+  fscanf(fp, "%le", &tolmax);
 
   int* jA_aux = (int*)malloc(mGPU0->nnz * sizeof(int));
   int* iA_aux = (int*)malloc((mGPU0->nrows + 1) * sizeof(int));
@@ -727,6 +735,8 @@ void BCG() {
     double** dt = &mGPU->dt;
     double** ds = &mGPU->ds;
     double** dy = &mGPU->dy;
+    double** dz = &mGPU->dz;
+    double** dAx2 = &mGPU->dAx2;
     int nrows = mGPU->nrows;
     cudaMalloc(dr0, nrows * sizeof(double));
     cudaMalloc(dr0h, nrows * sizeof(double));
@@ -735,6 +745,8 @@ void BCG() {
     cudaMalloc(dt, nrows * sizeof(double));
     cudaMalloc(ds, nrows * sizeof(double));
     cudaMalloc(dy, nrows * sizeof(double));
+    cudaMalloc(dz, nrows * sizeof(double));//todo remove
+    cudaMalloc(dAx2, nrows * sizeof(double));//todo remove
   }
 
   int offset_nnz = 0;

@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.10)
 project(MultiGPUOpenMPCAMP)
 
-add_definitions(-DCSC_ATOMIC)
+add_definitions(-DCSR)
+#add_definitions(-DCUID) #slower
 
 enable_language(CUDA)
 

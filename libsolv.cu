@@ -301,7 +301,10 @@ void solveBcgCudaDeviceCVODE(ModelDataGPU *md){
 __global__
 void cudaGlobalCVode(ModelDataGPU md_object) {
   ModelDataGPU *md = &md_object;
-  solveBcgCudaDeviceCVODE(md);
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if(i<md->nrows) {
+    solveBcgCudaDeviceCVODE(md);
+  }
 }
 
 int nextPowerOfTwoBCG(int v) {

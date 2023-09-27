@@ -250,7 +250,7 @@ __global__ void cudadotxy(double *g_i1, double *g_i2, double *g_o, int n_shr_emp
   __syncthreads();
 }
 
-double gpu_dotxy(double* g_i1, double* g_i2, double* sum, double* g_o, int nshre, int blocks,int threads,int shr)
+void gpu_dotxy(double* g_i1, double* g_i2, double* sum, double* g_o, int nshre, int blocks,int threads,int shr)
 {
   cudadotxy<<<blocks,threads,shr>>>(g_i1,g_i2,g_o,nshre);
   cudaMemcpy(&sum, g_o, sizeof(double), cudaMemcpyDeviceToHost);
@@ -446,7 +446,7 @@ void solveGPU_block(ModelDataGPU* md){
   gpu_axpby(dr0,dtempv,1.0,-1.0,nrows,blocks,threads);
   gpu_yequalsx(dr0h,dr0,nrows,blocks,threads);
   int it=0;
-  while(it<1000 && temp1>1.0E-30){
+  while(it<1 && temp1>1.0E-30){
     gpu_dotxy(dr0,dr0h,&rho1,dtemp,nshre,blocks,threads,shr);
     beta=(rho1/rho0)*(alpha/omega0);
     gpu_zaxpbypc(dp0,dr0,dn0,beta,-1.0*omega0*beta,nrows,blocks,threads);

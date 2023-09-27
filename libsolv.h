@@ -8,6 +8,7 @@
 
 #include <cuda.h>
 
+
 typedef struct {
   int lenjA;
   int leniA;

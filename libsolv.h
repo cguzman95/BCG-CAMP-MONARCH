@@ -7,6 +7,8 @@
 #define LIBSOLV_H
 
 #include <cuda.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 typedef struct {
   int lenjA;

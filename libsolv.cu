@@ -8,58 +8,6 @@
 
 using namespace std;
 
-//
-//dAthreads
-//
-// Para reservar memoria Double e Int
-extern "C++" void cudaMallocDouble(double* &vector,int size)
-{
-  cudaMalloc((void**)&vector,size*sizeof(double));
-}
-
-extern "C++" void cudaMallocInt(int* &vector,int size)
-{
-  cudaMalloc((void**)&vector,size*sizeof(int));
-}
-
-// Para copiar a CPU->GPU Double e Int
-extern "C++" void cudaMemcpyDToGpu(double* h_vect,double* d_vect,int size )
-{
-  cudaMemcpy(d_vect,h_vect,size*sizeof(double),cudaMemcpyHostToDevice);
-}
-
-extern "C++" void cudaMemcpyIToGpu(int* h_vect,int* d_vect,int size )
-{
-  cudaMemcpy(d_vect,h_vect,size*sizeof(int),cudaMemcpyHostToDevice);
-}
-
-// Para copiar a GPU->CPU Double e Int
-extern "C++" void cudaMemcpyIToCpu(int* h_vect, int* d_vect,int size )
-{
-  cudaMemcpy(h_vect,d_vect,size*sizeof(int),cudaMemcpyDeviceToHost);
-}
-
-extern "C++" void cudaMemcpyDToCpu(double* h_vect, double* d_vect,int size )
-{
-  cudaMemcpy(h_vect,d_vect,size*sizeof(double),cudaMemcpyDeviceToHost);
-}
-
-// Para liberar memoria
-extern "C++" void cudaFreeMem(void* vector)
-{
-  cudaFree(vector);
-}
-
-extern "C++" void cudaGetLastErrorC(){
-  cudaError_t error;
-  error=cudaGetLastError();
-  if(error!= cudaSuccess)
-  {
-    cout<<" ERROR INSIDE A CUDA FUNCTION: "<<error<<" "<<cudaGetErrorString(error)<<endl;
-    exit(0);
-  }
-}
-
 __global__ void cudamatScaleAddI(int nrows, double* dA, int* djA, int* diA, double alpha)
 {
   int row= threadIdx.x + blockDim.x*blockIdx.x;
@@ -109,11 +57,6 @@ __global__
 __global__ void cudadiagprecond(int nrows, double* dA, int* djA, int* diA, double* ddiag)
 {
   int row= threadIdx.x + blockDim.x*blockIdx.x;
-
-#ifdef DEBUG_cudadiagprecond
-
-
-#endif
 
   if(row < nrows){
     int jstart=diA[row];
@@ -197,20 +140,16 @@ __global__ void cudaSpmvCSC(double* dx, double* db, int nrows, double* dA, int* 
   }
 }
 
-extern "C++" void gpu_spmv(double* dx ,double* db, int nrows, double* dA, int *djA,int *diA,int mattype,int blocks,int  threads)
+extern "C++" void gpu_spmv(double* dx ,double* db, int nrows, double* dA, int *djA,int *diA,int blocks,int  threads)
 {
   dim3 dimGrid(blocks,1,1);
   dim3 dimBlock(threads,1,1);
-
-  if(mattype==0)
-  {
-    cudaSpmvCSR<<<dimGrid,dimBlock>>>(dx, db, nrows, dA, djA, diA);
-  }
-  else
-  {
-    cudasetconst<<<dimGrid,dimBlock>>>(dx, 0.0, nrows);
-    cudaSpmvCSC<<<dimGrid,dimBlock>>>(dx, db, nrows, dA, djA, diA);
-  }
+#ifdef CSC
+  cudasetconst<<<dimGrid,dimBlock>>>(dx, 0.0, nrows);
+  cudaSpmvCSC<<<dimGrid,dimBlock>>>(dx, db, nrows, dA, djA, diA);
+#else
+  cudaSpmvCSR<<<dimGrid,dimBlock>>>(dx, db, nrows, dA, djA, diA);
+#endif
 }
 
 // y= a*x+ b*y
@@ -533,7 +472,7 @@ void solveGPU_block(ModelDataGPU* mGPU){
   double *dy = mGPU->dy;
   double *dz = mGPU->dz;
   double *aux = mGPU->aux;
-  double *dtempv2 = mGPU->dtempv2;
+  double *dtempv = mGPU->dtempv;
 
   double alpha,rho0,omega0,beta,rho1,temp1,temp2;
   alpha=rho0=omega0=beta=rho1=temp1=temp2=1.0;
@@ -544,24 +483,24 @@ void solveGPU_block(ModelDataGPU* mGPU){
   gpu_yequalsconst(dp0,0.0,nrows,blocks,threads);
   int it=0;
   while(it<1000 && temp1>1.0E-30){
-    rho1=gpu_dotxy(dr0, dr0h, aux, dtempv2, nrows,(blocks + 1) / 2, threads);
+    rho1=gpu_dotxy(dr0, dr0h, aux, dtempv, nrows,(blocks + 1) / 2, threads);
     beta=(rho1/rho0)*(alpha/omega0);
     gpu_zaxpbypc(dp0,dr0,dn0,beta,-1.0*omega0*beta,nrows,blocks,threads);
     gpu_multxy(dy,ddiag,dp0,nrows,blocks,threads);
     gpu_spmv(dn0,dy,nrows,dA,djA,diA,blocks,threads);
-    temp1=gpu_dotxy(dr0h, dn0, aux, dtempv2, nrows,(blocks + 1) / 2, threads);
+    temp1=gpu_dotxy(dr0h, dn0, aux, dtempv, nrows,(blocks + 1) / 2, threads);
     alpha=rho1/temp1;
     gpu_zaxpby(1.0,dr0,-1.0*alpha,dn0,ds,nrows,blocks,threads);
     gpu_multxy(dz,ddiag,ds,nrows,blocks,threads);
     gpu_spmv(dt,dz,nrows,dA,djA,diA,blocks,threads);
     gpu_multxy(dAx2,ddiag,dt,nrows,blocks,threads);
-    temp1=gpu_dotxy(dz, dAx2, aux, dtempv2, nrows,(blocks + 1) / 2, threads);
-    temp2=gpu_dotxy(dAx2, dAx2, aux, dtempv2, nrows,(blocks + 1) / 2, threads);
+    temp1=gpu_dotxy(dz, dAx2, aux, dtempv, nrows,(blocks + 1) / 2, threads);
+    temp2=gpu_dotxy(dAx2, dAx2, aux, dtempv, nrows,(blocks + 1) / 2, threads);
     omega0= temp1/temp2;
     gpu_axpy(dx,dy,alpha,nrows,blocks,threads);
     gpu_axpy(dx,dz,omega0,nrows,blocks,threads);
     gpu_zaxpby(1.0,ds,-1.0*omega0,dt,dr0,nrows,blocks,threads);
-    temp1=gpu_dotxy(dr0, dr0, aux, dtempv2, nrows,(blocks + 1) / 2, threads);
+    temp1=gpu_dotxy(dr0, dr0, aux, dtempv, nrows,(blocks + 1) / 2, threads);
     temp1=sqrt(temp1);
     rho0=rho1;
     it++;

@@ -123,14 +123,14 @@ __global__ void cudaSpmvCSC(double* dx, double* db, double* dA, int* djA, int* d
   __syncthreads();
 }
 
-void gpu_spmv(double* dx ,double* db, double* dA, int *djA,int *diA,int blocks,int threads)
+void gpu_spmv(double* dx ,double* db, double* dA, int *djA,int *diA,int blocks,int threads,int shr)
 {
   dim3 dimGrid(blocks,1,1);
   dim3 dimBlock(threads,1,1);
 #ifdef CSC
-  cudaSpmvCSC<<<dimGrid,dimBlock>>>(dx, db, dA, djA, diA);
+  cudaSpmvCSC<<<blocks,threads,shr>>>(dx, db, dA, djA, diA);
 #else
-  cudaSpmvCSR<<<dimGrid,dimBlock>>>(dx, db, dA, djA, diA);
+  cudaSpmvCSR<<<blocks,threads,shr>>>(dx, db, dA, djA, diA);
 #endif
 }
 
@@ -170,12 +170,12 @@ void gpu_yequalsx(double *dy, double* dx, int nrows, int blocks, int threads)
 
 }
 
-__global__ void cudareducey(double *g_odata, unsigned int n)
+__global__ void cudareducey(double *g_o, unsigned int n)
 {
   extern __shared__ double sdata[];
   unsigned int tid = threadIdx.x;
 
-  double mySum =  (tid < n) ? g_odata[tid] : 0;
+  double mySum =  (tid < n) ? g_o[tid] : 0;
 
   sdata[tid] = mySum;
   __syncthreads();
@@ -188,7 +188,7 @@ __global__ void cudareducey(double *g_odata, unsigned int n)
     __syncthreads();
   }
 
-  if (tid == 0) g_odata[blockIdx.x] = sdata[0];
+  if (tid == 0) g_o[blockIdx.x] = sdata[0];
 }
 
 __device__ void warpReduce_2(volatile double *sdata, unsigned int tid) {
@@ -201,7 +201,7 @@ __device__ void warpReduce_2(volatile double *sdata, unsigned int tid) {
   if (blockSize >= 2) sdata[tid] += sdata[tid + 1];
 }
 
-__global__ void cudadotxy(double *g_idata1, double *g_idata2, double *g_odata, int n_shr_empty)
+__global__ void cudadotxy(double *g_i1, double *g_i2, double *g_o, int n_shr_empty)
 {
   extern __shared__ double sdata[];
   unsigned int tid = threadIdx.x;
@@ -216,7 +216,7 @@ __global__ void cudadotxy(double *g_idata1, double *g_idata2, double *g_odata, i
   __syncthreads();
   if(tid==0){
     for(int j=0;j<blockDim.x;j++){
-      sdata[0]+=g_idata1[j+blockIdx.x*blockDim.x]*g_idata2[j+blockIdx.x*blockDim.x];
+      sdata[0]+=g_i1[j+blockIdx.x*blockDim.x]*g_i2[j+blockIdx.x*blockDim.x];
     }
   }
 #else
@@ -224,7 +224,7 @@ __global__ void cudadotxy(double *g_idata1, double *g_idata2, double *g_odata, i
   if(tid<n_shr_empty)
     sdata[tid+blockDim.x]=0.;
   __syncthreads();
-  sdata[tid] = g_idata1[i]*g_idata2[i];
+  sdata[tid] = g_i1[i]*g_i2[i];
   __syncthreads();
   unsigned int blockSize = blockDim.x+n_shr_empty;
   if ((blockSize >= 1024) && (tid < 512)) {
@@ -246,8 +246,14 @@ __global__ void cudadotxy(double *g_idata1, double *g_idata2, double *g_odata, i
   if (tid < 32) warpReduce_2(sdata, tid);
 #endif
   __syncthreads();
-  *g_odata = sdata[0];
+  *g_o = sdata[0];
   __syncthreads();
+}
+
+double gpu_dotxy(double* g_i1, double* g_i2, double* sum, double* g_o, int nshre, int blocks,int threads,int shr)
+{
+  cudadotxy<<<blocks,threads,shr>>>(g_i1,g_i2,g_o,nshre);
+  cudaMemcpy(&sum, g_o, sizeof(double), cudaMemcpyDeviceToHost);
 }
 
 // z= a*z + x + b*y
@@ -324,16 +330,16 @@ void gpu_axpy(double* dy, double* dx ,double a, int nrows, int blocks, int threa
 }
 
 // sqrt(sum ( (x_i*y_i)^2)/n)
-__global__ void cudaDVWRMS_Norm(double *g_idata1, double *g_idata2, double *g_odata, unsigned int n)
+__global__ void cudaDVWRMS_Norm(double *g_i1, double *g_i2, double *g_o, unsigned int n)
 {
   extern __shared__ double sdata[];
   unsigned int tid = threadIdx.x;
   unsigned int i = blockIdx.x*(blockDim.x*2) + threadIdx.x;
 
-  double mySum = (i < n) ? g_idata1[i]*g_idata1[i]*g_idata2[i]*g_idata2[i] : 0;
+  double mySum = (i < n) ? g_i1[i]*g_i1[i]*g_i2[i]*g_i2[i] : 0;
 
   if (i + blockDim.x < n)
-    mySum += g_idata1[i+blockDim.x]*g_idata1[i+blockDim.x]*g_idata2[i+blockDim.x]*g_idata2[i+blockDim.x];
+    mySum += g_i1[i+blockDim.x]*g_i1[i+blockDim.x]*g_i2[i+blockDim.x]*g_i2[i+blockDim.x];
 
   sdata[tid] = mySum;
   __syncthreads();
@@ -346,7 +352,7 @@ __global__ void cudaDVWRMS_Norm(double *g_idata1, double *g_idata2, double *g_od
     __syncthreads();
   }
 
-  if (tid == 0) g_odata[blockIdx.x] = sdata[0];
+  if (tid == 0) g_o[blockIdx.x] = sdata[0];
 }
 
 double gpu_VWRMS_Norm(int n, double* vec1,double* vec2,double* h_temp,double* d_temp, int blocks,int threads)
@@ -430,35 +436,36 @@ void solveGPU_block(ModelDataGPU* md){
   double *dy = md->dy;
   double *dtempv = md->dtempv;
   double *dx = md->dx;
+  double *dtemp = md->dtemp;
 
   double alpha,rho0,omega0,beta,rho1,temp1,temp2;
   alpha=rho0=omega0=beta=rho1=temp1=temp2=1.0;
   gpu_yequalsconst(dn0,0.0,nrows,blocks,threads);
   gpu_yequalsconst(dp0,0.0,nrows,blocks,threads);
-  gpu_spmv(dr0,dx,dA,djA,diA,blocks,threads);
+  gpu_spmv(dr0,dx,dA,djA,diA,blocks,threads,shr);
   gpu_axpby(dr0,dtempv,1.0,-1.0,nrows,blocks,threads);
   gpu_yequalsx(dr0h,dr0,nrows,blocks,threads);
   int it=0;
   while(it<1000 && temp1>1.0E-30){
-    cudadotxy<<<blocks,threads,shr>>>(dr0,dr0h,&rho1,nshre);
+    gpu_dotxy(dr0,dr0h,&rho1,dtemp,nshre,blocks,threads,shr);
     beta=(rho1/rho0)*(alpha/omega0);
     gpu_zaxpbypc(dp0,dr0,dn0,beta,-1.0*omega0*beta,nrows,blocks,threads);
     gpu_multxy(dy,ddiag,dp0,nrows,blocks,threads);
-    gpu_spmv(dn0,dy,dA,djA,diA,blocks,threads);
-    cudadotxy<<<blocks,threads,shr>>>(dr0,dr0h,&temp1,nshre);
+    gpu_spmv(dn0,dy,dA,djA,diA,blocks,threads,shr);
+    gpu_dotxy(dr0,dr0h,&temp1,dtemp,nshre,blocks,threads,shr);
     alpha=rho1/temp1;
     gpu_zaxpby(1.0,dr0,-1.0*alpha,dn0,ds,nrows,blocks,threads);
     gpu_axpy(dx,dy,alpha,nrows,blocks,threads);
     gpu_multxy(dy,ddiag,ds,nrows,blocks,threads);
-    gpu_spmv(dt,dy,dA,djA,diA,blocks,threads);
+    gpu_spmv(dt,dy,dA,djA,diA,blocks,threads,shr);
     gpu_multxy(dr0,ddiag,dt,nrows,blocks,threads);
-    cudadotxy<<<blocks,threads,shr>>>(dy,dr0,&temp1,nshre);
-    cudadotxy<<<blocks,threads,shr>>>(dr0,dr0,&temp2,nshre);
+    gpu_dotxy(dy,dr0,&temp1,dtemp,nshre,blocks,threads,shr);
+    gpu_dotxy(dr0,dr0,&temp2,dtemp,nshre,blocks,threads,shr);
     omega0= temp1/temp2;
     gpu_axpy(dx,dy,omega0,nrows,blocks,threads);
     gpu_zaxpby(1.0,ds,-1.0*omega0,dt,dr0,nrows,blocks,threads);
     gpu_yequalsconst(dt,0.0,nrows,blocks,threads);//needed?
-    cudadotxy<<<blocks,threads,shr>>>(dr0,dr0,&temp1,nshre);
+    gpu_dotxy(dr0,dr0,&temp1,dtemp,nshre,blocks,threads,shr);
     temp1=sqrt(temp1);
     rho0=rho1;
     it++;

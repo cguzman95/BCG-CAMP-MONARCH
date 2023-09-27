@@ -10,7 +10,6 @@
 #include "libsolv.h"
 
 int compare_doubles(double* x, double* y, int len, const char* s) {
-
     int flag = 1;
     double tol = 0.0001;
     double rel_error, abs_error;
@@ -724,6 +723,7 @@ void BCG() {
     cudaMalloc((void**)&mGPU->ddiag, mGPU->nrows * sizeof(double));
     cudaMalloc((void**)&mGPU->dx, mGPU->nrows * sizeof(double));
     cudaMalloc((void**)&mGPU->dtempv, mGPU->nrows * sizeof(double));
+    cudaMalloc((void**)&mGPU->dtemp, sizeof(double));
     //Auxiliary vectors ("private")
     double** dr0 = &mGPU->dr0;
     double** dr0h = &mGPU->dr0h;

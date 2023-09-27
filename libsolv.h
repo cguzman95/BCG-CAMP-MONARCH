@@ -18,6 +18,7 @@ typedef struct {
   int *diA;
   double *dx;
   double* dtempv;
+  double* dtemp;
   int nrows;
   int nnz;
   int n_shr_empty;

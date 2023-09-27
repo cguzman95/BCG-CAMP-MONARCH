@@ -438,6 +438,7 @@ void solveGPU_block(ModelDataGPU* md){
   double *dx = md->dx;
   double *dtemp = md->dtemp;
 
+  printf("DEBUG: USING IT=1 TO ACCELERATE NSIGHT\n");
   double alpha,rho0,omega0,beta,rho1,temp1,temp2;
   alpha=rho0=omega0=beta=rho1=temp1=temp2=1.0;
   gpu_yequalsconst(dn0,0.0,nrows,blocks,threads);

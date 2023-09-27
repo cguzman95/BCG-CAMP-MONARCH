@@ -16,7 +16,8 @@ run(){
 }
 
 run_nsight(){
-  /apps/NVIDIA-HPC-SDK/20.9/Linux_ppc64le/2020/profilers/Nsight_Compute/ncu --set full -f -o ../profile ./test
+  /apps/NVIDIA-HPC-SDK/21.3/Linux_ppc64le/21.3/profilers/Nsight_Compute/ncu --set full -f -o ../profile ./test
+  #/apps/NVIDIA-HPC-SDK/22.3/Linux_ppc64le/22.3/profilers/Nsight_Compute/ncu
 }
 
 run_nvprof(){

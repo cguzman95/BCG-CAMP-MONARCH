@@ -1,3 +1,3 @@
 confBCG1Cell.txt
 1
-100000
+10000

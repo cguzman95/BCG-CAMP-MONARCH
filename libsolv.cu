@@ -465,7 +465,6 @@ void solveGPU_block(ModelDataGPU* md){
     omega0= temp1/temp2;
     gpu_axpy(dx,dy,omega0,nrows,blocks,threads);
     gpu_zaxpby(1.0,ds,-1.0*omega0,dt,dr0,nrows,blocks,threads);
-    gpu_yequalsconst(dt,0.0,nrows,blocks,threads);//needed?
     gpu_dotxy(dr0,dr0,&temp1,dtemp,nshre,blocks,threads,shr);
     temp1=sqrt(temp1);
     rho0=rho1;

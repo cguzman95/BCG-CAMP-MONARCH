@@ -13,4 +13,4 @@ mkdir out
 
 cmake ..
 cd ../
-./make.run.sh
+./run.sh

@@ -1,12 +1,8 @@
-/* Copyright (C) 2021 Barcelona Supercomputing Center and University of
- * Illinois at Urbana-Champaign
- * SPDX-License-Identifier: MIT
- */
-
 #ifndef LIBSOLV_H
 #define LIBSOLV_H
 
 #include <cuda.h>
+#include <stdio.h>
 
 typedef struct {
   int lenjA;
@@ -16,6 +12,7 @@ typedef struct {
   int *diA;
   double *dx;
   double* dtempv;
+  int n_specs;
   int nrows;
   int nnz;
   int n_shr_empty;

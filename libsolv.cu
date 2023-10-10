@@ -1,8 +1,3 @@
-/* Copyright (C) 2021 Barcelona Supercomputing Center and University of
- * Illinois at Urbana-Champaign
- * SPDX-License-Identifier: MIT
- */
-
 #include "libsolv.h"
 
 __device__ void cudaDeviceSpmvCSR(double* dx, double* db, double* dA, int* djA, int* diA){

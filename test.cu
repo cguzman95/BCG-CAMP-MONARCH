@@ -1,8 +1,3 @@
-/* Copyright (C) 2022 Barcelona Supercomputing Center
- * SPDX-License-Identifier: MIT
- */
-
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

@@ -24,6 +24,6 @@ run_nvprof(){
 nvprof --analysis-metrics -f -o ../profile.nvprof ./test
 }
 
-run
-#run_nsight
+#run
+run_nsight
 #run_nvprof

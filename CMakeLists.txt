@@ -6,7 +6,7 @@ add_definitions(-DCSR)
 
 enable_language(CUDA)
 
-set(STD_CUDA_FLAGS "-g -G -arch=compute_70 -code=sm_70") #if debug: -g -G
+set(STD_CUDA_FLAGS "-g -O3 -arch=compute_70 -code=sm_70") #if debug: -g -G
 
 set(CAMP_CUDA_SRC libsolv.cu)
 set_source_files_properties(${CAMP_CUDA_SRC} PROPERTIES COMPILE_FLAGS

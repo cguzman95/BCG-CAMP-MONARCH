@@ -88,32 +88,28 @@ __global__ void cudasetconst(double* dy,double constant,int nrows)
   }
 }
 
-__global__ void cudasetconst1_1(double* dy)
-{
-  dy[0]=0;
-}
-
-__global__ void cudasetconst1_index(double* dy)
-{
-  dy[threadIdx.x + blockDim.x*blockIdx.x]=0;
-}
-
 __global__ void cudasetconst1(double* dy)
 {
   int i = threadIdx.x + blockDim.x*blockIdx.x;
   dy[i]=0;
 }
 
+__global__ void cudasetconst2(double* dy)
+{
+  dy[0]=0;
+}
+
+
 void gpu_yequalsconst(double *dy, double constant, int nrows, int blocks, int threads)
 {
   dim3 dimGrid(blocks,1,1);
   dim3 dimBlock(threads,1,1);
-  cudasetconst1_1<<<1,1>>>(dy);
-  cudasetconst1_index<<<1,1>>>(dy);
-  cudasetconst1<<<1,1>>>(dy);
-  cudasetconst2<<<1,2>>>(dy);
-  cudasetconst4<<<1,4>>>(dy);
-  cudasetconst5<<<1,5>>>(dy);
+  cudasetconst2<<<512,1024>>>(dy);
+  cudasetconst1<<<256,1024>>>(dy);
+  cudasetconst1<<<512,1024>>>(dy);
+  cudasetconst1<<<1024,1024>>>(dy);
+  cudasetconst1<<<2048,1024>>>(dy);
+  cudasetconst1<<<4092,1024>>>(dy);
 }
 
 __global__ void cudaSpmvCSR(double* dx, double* db, double* dA, int* djA, int* diA)
@@ -379,32 +375,15 @@ double gpu_VWRMS_Norm(int n, double* vec1,double* vec2,double* h_temp,double* d_
 {
   dim3 dimGrid(blocks,1,1);
   dim3 dimBlock(threads,1,1);
-
   cudaDVWRMS_Norm<<<dimGrid,dimBlock,threads*sizeof(double)>>>(vec1,vec2,d_temp,n);
-
-  //cudaMemcpy(h_temp, d_temp, blocks * sizeof(double), cudaMemcpyDeviceToHost);
-
   int redsize= sqrt(blocks) +1;
   redsize=pow(2,redsize);
-
   dim3 dimGrid2(1,1,1);
   dim3 dimBlock2(redsize,1,1);
-
   cudareducey<<<dimGrid2,dimBlock2,redsize*sizeof(double)>>>(d_temp,blocks);
-
   double sum;
   cudaMemcpy(&sum, d_temp, sizeof(double), cudaMemcpyDeviceToHost);
-
   return sqrt(sum/n);
-
-  /*
-    double sum=0;
-    for(int i=0;i<blocks;i++)
-    {
-      sum+=h_temp[i];
-    }
-    return sqrt(sum/n);
-    */
 }
 
 // y=alpha*y

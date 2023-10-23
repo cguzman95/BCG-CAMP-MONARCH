@@ -104,24 +104,14 @@ void gpu_yequalsconst(double *dy, double constant, int nrows, int blocks, int th
 {
   dim3 dimGrid(blocks,1,1);
   dim3 dimBlock(threads,1,1);
+  /*
   cudasetconst2<<<512,1024>>>(dy);
   cudasetconst1<<<256,1024>>>(dy);
   cudasetconst1<<<512,1024>>>(dy);
   cudasetconst1<<<1024,1024>>>(dy);
   cudasetconst1<<<2048,1024>>>(dy);
   cudasetconst1<<<4092,1024>>>(dy);
-}
-
-__global__ void cudaSpmvCSR(double* dx, double* db, double* dA, int* djA, int* diA)
-{
-  int i = threadIdx.x + blockDim.x*blockIdx.x;
-  double sum = 0.0;
-  int nnz=diA[blockDim.x];
-  for(int j=diA[threadIdx.x]; j<diA[threadIdx.x+1]; j++){
-    sum+= db[djA[j]+blockDim.x*blockIdx.x]*dA[j+nnz*blockIdx.x];
-  }
-  __syncthreads();
-  dx[i]=sum;
+   */
 }
 
 __global__ void cudaSpmvCSC(double* dx, double* db, double* dA, int* djA, int* diA)
@@ -139,14 +129,50 @@ __global__ void cudaSpmvCSC(double* dx, double* db, double* dA, int* djA, int* d
   __syncthreads();
 }
 
+__global__ void cudaSpmvCSR(double* dx, double* db, double* dA, int* djA, int* diA)
+{
+  int i = threadIdx.x + blockDim.x*blockIdx.x;
+  double sum = 0.0;
+  int nnz=diA[blockDim.x];
+  for(int j=diA[threadIdx.x]; j<diA[threadIdx.x+1]; j++){
+    sum+= db[djA[j]+blockDim.x*blockIdx.x]*dA[j+nnz*blockIdx.x];
+  }
+  __syncthreads();
+  dx[i]=sum;
+}
+
+__global__ void cudaSpmvCSR3(double* dx, double* db, double* dA, int* djA, int* diA)
+{
+  int i = threadIdx.x + blockDim.x*blockIdx.x;
+  double sum = 0.0;
+  int nnz=diA[blockDim.x];
+  sum+= db[djA[0]+blockDim.x*blockIdx.x]*dA[0+nnz*blockIdx.x];
+  __syncthreads();
+  dx[i]=sum;
+}
+
+__global__ void cudaSpmvCSR2(double* dx, double* db, double* dA, int* djA, int* diA)
+{
+  int i = threadIdx.x + blockDim.x*blockIdx.x;
+  double sum = 0.0;
+  int nnz=diA[blockDim.x];
+  for(int j=diA[threadIdx.x]; j<diA[threadIdx.x+1]; j++){
+    sum+= 0.01;
+  }
+  __syncthreads();
+  dx[i]=sum;
+}
+
 void gpu_spmv(double* dx ,double* db, double* dA, int *djA,int *diA,int blocks,int threads,int shr)
 {
   dim3 dimGrid(blocks,1,1);
   dim3 dimBlock(threads,1,1);
 #ifdef CSC
-  cudaSpmvCSC<<<blocks,threads,shr>>>(dx, db, dA, djA, diA);
+  cudaSpmvCSC<<<blocks,threads>>>(dx, db, dA, djA, diA);
 #else
-  cudaSpmvCSR<<<blocks,threads,shr>>>(dx, db, dA, djA, diA);
+  //cudaSpmvCSR<<<blocks,threads>>>(dx, db, dA, djA, diA);
+  cudaSpmvCSR2<<<blocks,threads>>>(dx, db, dA, djA, diA);
+  cudaSpmvCSR3<<<blocks,threads>>>(dx, db, dA, djA, diA);
 #endif
 }
 
@@ -416,12 +442,65 @@ int nextPowerOfTwoBCG(int v) {
 }
 
 void solveGPU_block(ModelDataGPU* md){
+  double *dA = md->dA;
+  int *djA = md->djA;
+  int *diA = md->diA;
   int nrows = md->nrows;
   int blocks = md->n_cells;
   int threads = md->nrows / md->n_cells;
+  int n_shr_memory = nextPowerOfTwoBCG(threads);
+  int shr = n_shr_memory * sizeof(double);
+  int nshre=md->n_shr_empty;
+  double *ddiag = md->ddiag;
+  double *dr0 = md->dr0;
+  double *dr0h = md->dr0h;
   double *dn0 = md->dn0;
+  double *dp0 = md->dp0;
+  double *dt = md->dt;
+  double *ds = md->ds;
+  double *dy = md->dy;
+  double *dtempv = md->dtempv;
+  double *dx = md->dx;
+  double *dtemp = md->dtemp;
 
-
-  printf("DEBUG\n");
+  printf("DEBUG: USING IT=1 TO ACCELERATE NSIGHT\n");
+  double alpha,rho0,omega0,beta,rho1,temp1,temp2;
+  alpha=rho0=omega0=beta=rho1=temp1=temp2=1.0;
+  gpu_spmv(dr0,dx,dA,djA,diA,1,threads,shr);
+  /*
+  gpu_spmv(dr0,dx,dA,djA,diA,2,threads,shr);
+  gpu_spmv(dr0,dx,dA,djA,diA,4,threads,shr);
+  gpu_spmv(dr0,dx,dA,djA,diA,512,threads,shr);
+  gpu_spmv(dr0,dx,dA,djA,diA,1024,threads,shr);
+*/
+/*
   gpu_yequalsconst(dn0,0.0,nrows,blocks,threads);
+  gpu_yequalsconst(dp0,0.0,nrows,blocks,threads);
+  gpu_axpby(dr0,dtempv,1.0,-1.0,nrows,blocks,threads);
+  gpu_yequalsx(dr0h,dr0,nrows,blocks,threads);
+  int it=0;
+  while(it<1 && temp1>1.0E-30){
+    gpu_dotxy(dr0,dr0h,&rho1,dtemp,nshre,blocks,threads,shr);
+    beta=(rho1/rho0)*(alpha/omega0);
+    gpu_zaxpbypc(dp0,dr0,dn0,beta,-1.0*omega0*beta,nrows,blocks,threads);
+    gpu_multxy(dy,ddiag,dp0,nrows,blocks,threads);
+    gpu_spmv(dn0,dy,dA,djA,diA,blocks,threads,shr);
+    gpu_dotxy(dr0,dr0h,&temp1,dtemp,nshre,blocks,threads,shr);
+    alpha=rho1/temp1;
+    gpu_zaxpby(1.0,dr0,-1.0*alpha,dn0,ds,nrows,blocks,threads);
+    gpu_axpy(dx,dy,alpha,nrows,blocks,threads);
+    gpu_multxy(dy,ddiag,ds,nrows,blocks,threads);
+    gpu_spmv(dt,dy,dA,djA,diA,blocks,threads,shr);
+    gpu_multxy(dr0,ddiag,dt,nrows,blocks,threads);
+    gpu_dotxy(dy,dr0,&temp1,dtemp,nshre,blocks,threads,shr);
+    gpu_dotxy(dr0,dr0,&temp2,dtemp,nshre,blocks,threads,shr);
+    omega0= temp1/temp2;
+    gpu_axpy(dx,dy,omega0,nrows,blocks,threads);
+    gpu_zaxpby(1.0,ds,-1.0*omega0,dt,dr0,nrows,blocks,threads);
+    gpu_dotxy(dr0,dr0,&temp1,dtemp,nshre,blocks,threads,shr);
+    temp1=sqrt(temp1);
+    rho0=rho1;
+    it++;
+  }
+  */
 }

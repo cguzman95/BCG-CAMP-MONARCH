@@ -141,6 +141,79 @@ __global__ void cudaSpmvCSR(double* dx, double* db, double* dA, int* djA, int* d
   dx[i]=sum;
 }
 
+__global__ void cudaSpmvCSR7(double* dx, double* db, double* dA, int* djA, int* diA)
+{
+  int i = threadIdx.x + blockDim.x*blockIdx.x;
+  extern __shared__ double sdata[];
+  unsigned int tid = threadIdx.x;
+  /*if(i==0)
+    for(int j=0;j<1024;j++)
+      sdata[j]=0.;
+      */
+  if(tid<102)sdata[tid+blockDim.x]=0.;
+  __syncthreads();
+  double sum = 0.0;
+  int nnz=diA[blockDim.x];
+  if(i==0)printf("a\n");
+  for(int j=diA[threadIdx.x]; j<diA[threadIdx.x+1]; j++){
+    sum+= dA[j+nnz*blockIdx.x];
+    sdata[i]++;
+  }
+  __syncthreads();
+  if(i==0)printf("b\n");
+  printf("sdata[i] %lf\n",sdata[i]);
+
+  for (unsigned int s=256; s>0; s>>=1){
+    if (i < s)
+      sdata[i] += sdata[i + s];
+    __syncthreads();
+  }
+  if (i == 0) printf("sdata[0] %lf\n",sdata[0]);
+
+  __syncthreads();
+  dx[i]=sum;
+}
+
+__global__ void cudaSpmvCSR6(int nrows, double* dx, double* db, double* dA, int* djA, int* diA)
+{
+  int i = threadIdx.x + blockDim.x*blockIdx.x;
+  if(i<nrows){
+    double sum = 0.0;
+    int nnz=diA[blockDim.x];
+    for(int j=diA[threadIdx.x]; j<diA[threadIdx.x+1]; j++){
+      sum+= dA[j+nnz*blockIdx.x];
+    }
+    __syncthreads();
+    dx[i]=sum;
+  }
+}
+
+__global__ void cudaSpmvCSR5(double* dx, double* db, double* dA, int* djA, int* diA)
+{
+  int i = threadIdx.x + blockDim.x*blockIdx.x;
+  double sum = 0.0;
+  int nnz=diA[blockDim.x];
+  for(int j=diA[threadIdx.x]; j<diA[threadIdx.x+1]; j++){
+    sum+= db[djA[j]+blockDim.x*blockIdx.x];
+  }
+  __syncthreads();
+  dx[i]=sum;
+}
+
+__global__ void cudaSpmvCSR4(double* dx, double* db, double* dA, int* djA, int* diA)
+{
+  int i = threadIdx.x + blockDim.x*blockIdx.x;
+  extern __shared__ double sdata[];
+  unsigned int tid = threadIdx.x;
+  double sum = 0.0;
+  int nnz=diA[blockDim.x];
+  for(int j=diA[threadIdx.x]; j<diA[threadIdx.x+1]; j++){
+    sum+= dA[0+nnz*blockIdx.x];
+  }
+  __syncthreads();
+  dx[i]=sum;
+}
+
 __global__ void cudaSpmvCSR3(double* dx, double* db, double* dA, int* djA, int* diA)
 {
   int i = threadIdx.x + blockDim.x*blockIdx.x;
@@ -155,7 +228,6 @@ __global__ void cudaSpmvCSR2(double* dx, double* db, double* dA, int* djA, int* 
 {
   int i = threadIdx.x + blockDim.x*blockIdx.x;
   double sum = 0.0;
-  int nnz=diA[blockDim.x];
   for(int j=diA[threadIdx.x]; j<diA[threadIdx.x+1]; j++){
     sum+= 0.01;
   }
@@ -170,9 +242,7 @@ void gpu_spmv(double* dx ,double* db, double* dA, int *djA,int *diA,int blocks,i
 #ifdef CSC
   cudaSpmvCSC<<<blocks,threads>>>(dx, db, dA, djA, diA);
 #else
-  //cudaSpmvCSR<<<blocks,threads>>>(dx, db, dA, djA, diA);
-  cudaSpmvCSR2<<<blocks,threads>>>(dx, db, dA, djA, diA);
-  cudaSpmvCSR3<<<blocks,threads>>>(dx, db, dA, djA, diA);
+  cudaSpmvCSR4<<<1,1>>>(dx, db, dA, djA, diA);
 #endif
 }
 
@@ -463,7 +533,7 @@ void solveGPU_block(ModelDataGPU* md){
   double *dx = md->dx;
   double *dtemp = md->dtemp;
 
-  printf("DEBUG: USING IT=1 TO ACCELERATE NSIGHT\n");
+  printf("DEBUG\n");
   double alpha,rho0,omega0,beta,rho1,temp1,temp2;
   alpha=rho0=omega0=beta=rho1=temp1=temp2=1.0;
   gpu_spmv(dr0,dx,dA,djA,diA,1,threads,shr);

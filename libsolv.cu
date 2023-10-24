@@ -188,17 +188,19 @@ __global__ void cudaSpmvCSR5(double* dx, double* db, double* dA, int* djA, int* 
 {
   int i = threadIdx.x + blockDim.x*blockIdx.x;
   extern __shared__ double sdata[];
+  if(i<1){
   unsigned int tid = threadIdx.x;
   double sum = 0.0;
   int nnz=diA[blockDim.x];
   for(int j=diA[threadIdx.x]; j<diA[threadIdx.x+1]; j++){
     sum+= dA[0+nnz*blockIdx.x];
     sum+= dA[1+nnz*blockIdx.x];
-    sum+= dA[2+nnz*blockIdx.x];
-    sum+= dA[3+nnz*blockIdx.x];
   }
+  sum+= dA[2+nnz*blockIdx.x];
+  sum+= dA[3+nnz*blockIdx.x];
   __syncthreads();
   dx[i]=sum;
+  }
 }
 
 void gpu_spmv(double* dx ,double* db, double* dA, int *djA,int *diA,int blocks,int threads,int shr)
@@ -208,9 +210,6 @@ void gpu_spmv(double* dx ,double* db, double* dA, int *djA,int *diA,int blocks,i
 #ifdef CSC
   cudaSpmvCSC<<<blocks,threads>>>(dx, db, dA, djA, diA);
 #else
-  cudaSpmvCSR4<<<1,1>>>(dx, db, dA, djA, diA);
-  cudaSpmvCSR2<<<1,1>>>(dx, db, dA, djA, diA);
-  cudaSpmvCSR3<<<1,1>>>(dx, db, dA, djA, diA);
   cudaSpmvCSR5<<<1,1>>>(dx, db, dA, djA, diA);
 #endif
 }

@@ -141,68 +141,6 @@ __global__ void cudaSpmvCSR(double* dx, double* db, double* dA, int* djA, int* d
   dx[i]=sum;
 }
 
-__global__ void cudaSpmvCSR4(double* dx, double* db, double* dA, int* djA, int* diA)
-{
-  int i = threadIdx.x + blockDim.x*blockIdx.x;
-  extern __shared__ double sdata[];
-  unsigned int tid = threadIdx.x;
-  double sum = 0.0;
-  int nnz=diA[blockDim.x];
-  for(int j=diA[threadIdx.x]; j<diA[threadIdx.x+1]; j++){
-    sum+= dA[j+nnz*blockIdx.x];
-  }
-  __syncthreads();
-  dx[i]=sum;
-}
-
-__global__ void cudaSpmvCSR3(double* dx, double* db, double* dA, int* djA, int* diA)
-{
-  int i = threadIdx.x + blockDim.x*blockIdx.x;
-  extern __shared__ double sdata[];
-  unsigned int tid = threadIdx.x;
-  double sum = 0.0;
-  int nnz=diA[blockDim.x];
-  for(int j=diA[threadIdx.x]; j<diA[threadIdx.x+1]; j++){
-    sum+= dA[0+nnz*blockIdx.x];
-    sum+= dA[1+nnz*blockIdx.x];
-  }
-  __syncthreads();
-  dx[i]=sum;
-}
-
-__global__ void cudaSpmvCSR2(double* dx, double* db, double* dA, int* djA, int* diA)
-{
-  int i = threadIdx.x + blockDim.x*blockIdx.x;
-  extern __shared__ double sdata[];
-  unsigned int tid = threadIdx.x;
-  double sum = 0.0;
-  int nnz=diA[blockDim.x];
-  for(int j=diA[threadIdx.x]; j<diA[threadIdx.x+1]; j++){
-    sum+= dA[0+nnz*blockIdx.x];
-  }
-  __syncthreads();
-  dx[i]=sum;
-}
-
-__global__ void cudaSpmvCSR5(double* dx, double* db, double* dA, int* djA, int* diA)
-{
-  int i = threadIdx.x + blockDim.x*blockIdx.x;
-  extern __shared__ double sdata[];
-  if(i<1){
-  unsigned int tid = threadIdx.x;
-  double sum = 0.0;
-  int nnz=diA[blockDim.x];
-  for(int j=diA[threadIdx.x]; j<diA[threadIdx.x+1]; j++){
-    sum+= dA[0+nnz*blockIdx.x];
-    sum+= dA[1+nnz*blockIdx.x];
-  }
-  sum+= dA[2+nnz*blockIdx.x];
-  sum+= dA[3+nnz*blockIdx.x];
-  __syncthreads();
-  dx[i]=sum;
-  }
-}
-
 void gpu_spmv(double* dx ,double* db, double* dA, int *djA,int *diA,int blocks,int threads,int shr)
 {
   dim3 dimGrid(blocks,1,1);
@@ -210,11 +148,10 @@ void gpu_spmv(double* dx ,double* db, double* dA, int *djA,int *diA,int blocks,i
 #ifdef CSC
   cudaSpmvCSC<<<blocks,threads>>>(dx, db, dA, djA, diA);
 #else
-  cudaSpmvCSR5<<<1,1>>>(dx, db, dA, djA, diA);
+  cudaSpmvCSR<<<blocks,threads>>>(dx, db, dA, djA, diA);
 #endif
 }
 
-// y= a*x+ b*y
 __global__ void cudaaxpby(double* dy,double* dx, double a, double b, int nrows)
 {
   int row= threadIdx.x + blockDim.x*blockIdx.x;
@@ -290,16 +227,6 @@ __global__ void cudadotxy(double *g_i1, double *g_i2, double *g_o, int n_shr_emp
     sdata[tid+blockDim.x]=0.;
   __syncthreads();
   //print_double(sdata,73,"sdata");
-#ifdef DEV_cudaDevicedotxy_2
-  //used for compare with cpu
-  sdata[0]=0.;
-  __syncthreads();
-  if(tid==0){
-    for(int j=0;j<blockDim.x;j++){
-      sdata[0]+=g_i1[j+blockIdx.x*blockDim.x]*g_i2[j+blockIdx.x*blockDim.x];
-    }
-  }
-#else
   unsigned int i = blockIdx.x*blockDim.x + threadIdx.x;
   if(tid<n_shr_empty)
     sdata[tid+blockDim.x]=0.;
@@ -324,7 +251,6 @@ __global__ void cudadotxy(double *g_i1, double *g_i2, double *g_o, int n_shr_emp
   }
   __syncthreads();
   if (tid < 32) warpReduce_2(sdata, tid);
-#endif
   __syncthreads();
   *g_o = sdata[0];
   __syncthreads();
@@ -504,14 +430,9 @@ void solveGPU_block(ModelDataGPU* md){
   printf("DEBUG\n");
   double alpha,rho0,omega0,beta,rho1,temp1,temp2;
   alpha=rho0=omega0=beta=rho1=temp1=temp2=1.0;
-  gpu_spmv(dr0,dx,dA,djA,diA,1,threads,shr);
-  /*
-  gpu_spmv(dr0,dx,dA,djA,diA,2,threads,shr);
-  gpu_spmv(dr0,dx,dA,djA,diA,4,threads,shr);
-  gpu_spmv(dr0,dx,dA,djA,diA,512,threads,shr);
-  gpu_spmv(dr0,dx,dA,djA,diA,1024,threads,shr);
-*/
+  gpu_spmv(dr0,dx,dA,djA,diA,blocks,threads,shr);
 /*
+  gpu_axpby(dr0,dtempv,1.0,-1.0,nrows,blocks,threads);
   gpu_yequalsconst(dn0,0.0,nrows,blocks,threads);
   gpu_yequalsconst(dp0,0.0,nrows,blocks,threads);
   gpu_axpby(dr0,dtempv,1.0,-1.0,nrows,blocks,threads);

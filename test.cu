@@ -4,8 +4,6 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <math.h>
-#include <mpi.h>
-
 #include "libsolv.h"
 
 int compare_doubles(double* x, double* y, int len, const char* s) {
@@ -833,8 +831,6 @@ void BCG() {
 
 int main(int argc, char** argv)
 {
-  MPI_Init(&argc, &argv);
   BCG();
-  MPI_Finalize();
   return 0;
 }

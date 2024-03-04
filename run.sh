@@ -15,10 +15,6 @@ run(){
    fi
 }
 
-run_mpi(){
-    mpirun -v -np 1 --bind-to core ./test
-}
-
 run_nsight(){
   /apps/NVIDIA-HPC-SDK/20.9/Linux_ppc64le/2020/profilers/Nsight_Compute/ncu --set full -f -o ../profile ./test
 }
@@ -28,6 +24,5 @@ nvprof --analysis-metrics -f -o ../profile.nvprof ./test
 }
 
 run
-run_mpi
 #run_nsight
 #run_nvprof

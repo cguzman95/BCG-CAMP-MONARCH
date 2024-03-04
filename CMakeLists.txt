@@ -27,6 +27,10 @@ set_target_properties(camplib PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
         Fortran_MODULE_DIRECTORY ${CMAKE_BINARY_DIR})
 
+find_package(MPI)
+include_directories(SYSTEM ${MPI_INCLUDE_PATH})
+target_link_libraries(camplib ${MPI_C_LIBRARIES})
+
 add_executable(test test.cu)
 target_link_libraries(test camplib)
 

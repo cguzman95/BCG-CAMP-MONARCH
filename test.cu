@@ -4,6 +4,7 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <math.h>
+#include <mpi.h>
 
 #include "libsolv.h"
 
@@ -830,9 +831,10 @@ void BCG() {
 
 }
 
-int main()
+int main(int argc, char** argv)
 {
+  MPI_Init(&argc, &argv);
   BCG();
-
+  MPI_Finalize();
   return 0;
 }

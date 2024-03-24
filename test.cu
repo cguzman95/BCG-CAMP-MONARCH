@@ -510,11 +510,160 @@ void swapCSR_CUID(int n_row, int n_col, int* Ap, int* Aj, double* Ax, int* Bp, i
 
 }
 
-void swapCSR_CUID_BCG(ModelDataGPU *mGPU,
-                     int *Ap0, int *Aj0, double *Ax0, int *Aj1){
+void swapCSC_PA(int n_row, int n_col, int* Ai, int* Aj, double* Ax){
 
-#ifdef TEST_CSRtoCSD
+  int* Bi=(int*)malloc(n_row*sizeof(int)); //Nº of iterations
+  int* Bj=(int*)malloc(nnz*sizeof(int)); //Indices where to save the SPMV (Also rows of A)
+  double* Bx=(double*)malloc(nnz*sizeof(double));
+  int nnz=Ai[n_row];
+  int* savedRows=(int*)malloc(n_row*sizeof(int));
+  memset(savedRows, -1, n_row*sizeof(int));
+/*
+  CSR:
+  int Ap[n_row+1]={0,1,3,6};
+  int Aj[nnz]={0,0,1,0,1,2};
+  double Ax[nnz]={5.,4.,2.,3.,1.,8.};
+  CSC:
+  int Ai[n_row+1]={0,3,5,6};
+  int Aj[nnz]={0,1,2,1,2,2};
+  double Ax[nnz]={5.,4.,3.,2.,1.,8.};
+  5 0 0
+  4 2 0
+  3 1 8
+ */
+  for(int i=0;i<nrow;i++){
+    for(int j=Ai[i];j<Ai[i+1];i++){
+      int row=Aj[j];
+      int value=Ax[j];
+      bool isRowFree=true;
+      for(int i=0;i<nrow;i++){
+        if(row==savedRows[i]){
+          isRowFree=false;
+        }
+      }
+      if (isRowFree){
+        Bx=
+        Bi=
+        Bj=
+      }
+    }
+  }
 
+  for(int i=0;i<n_row;i++){
+    Ai[i] = Bi[i];
+  }
+  for(int i=0;i<nnz;i++){
+    Ax[i] = Bx[i];
+    Aj[i] = Bi[i];
+  }
+
+  free(Bi);
+  free(Bp);
+  free(Bx);
+
+/*
+  memset(Bp, 0, (n_row+1)*sizeof(int));
+  int* Bpi=(int*)malloc((n_row)*sizeof(int));
+  //int* BiBool=(int*)malloc((n_row*n_row)*sizeof(int));
+  //memset(BiBool, 0, (n_row*n_row)*sizeof(int));
+
+  Bpi[0]=0;
+  for(int i = 1; i < n_row; i++){
+    Bpi[i]=n_row-i;
+    //printf("Bpi i %d %d \n",Bpi[i],i);
+  } //0 2 1
+
+  for(int row = 0; row < n_row; row++){
+    for(int j = Ap[row]; j < Ap[row+1]; j++) {
+      Bp[Bpi[Aj[j]]+1]++; //Add value to nº values for diagonal
+
+      //printf("Bpi Aj[j] %d %d \n",Bpi[Aj[j]],Aj[j]);
+      //0 2 1
+      //1 0 2
+      //2 1 0
+    }
+    //0 2 1
+    for(int i = 0; i < n_row; i++){
+      Bpi[i]++;
+      if(Bpi[i]==n_row){
+        Bpi[i]=0;
+      }
+      //printf("Bpi i %d %d \n",Bpi[i],i);
+    }//1 0 2
+  }
+  //printf("n_row %d \n",n_row);
+
+  for(int i = 0; i < n_row+1; i++){
+    Bp[i+1]+=Bp[i];
+  }
+
+  /*
+  printf("Bpi:\n");
+  for(int i=0;i<n_row;i++)
+    printf("%d ",Bpi[i]);
+  printf("\n");
+  printf("Bp:\n");
+  for(int i=0;i<n_row+1;i++)
+    printf("%d ",Bp[i]);
+  printf("\n");
+*/
+  //exit(0);
+/*
+  memset(Bx, 0, (nnz)*sizeof(double));
+  int* offsetBx=(int*)malloc((n_row)*sizeof(int));
+  memset(offsetBx, 0, (n_row)*sizeof(int));
+  memset(Bi, 0, (nnz)*sizeof(int));
+  for(int row = 0; row < n_row; row++){
+    for(int j = Ap[row]; j < Ap[row+1]; j++) {
+      if(Aj[j]<=row){
+        int iDiag=Bpi[Aj[j]];
+        int nElemTillDiag=Bp[iDiag];
+        Bx[nElemTillDiag+offsetBx[iDiag]]=Ax[j];
+        Bi[nElemTillDiag+offsetBx[iDiag]]=Aj[j];
+
+        //printf("nElemTillDiag  offsetBx[iDiag] Aj[j] %d %d %d %d\n",nElemTillDiag, offsetBx[iDiag],iDiag,Aj[j]);
+        offsetBx[iDiag]++;
+      }
+    }
+    //0 2 1
+    for(int i = 0; i < n_row; i++){
+      Bpi[i]++;
+      if(Bpi[i]==n_row){
+        Bpi[i]=0;
+      }
+      //printf("Bpi i %d %d \n",Bpi[i],i);
+    }//1 0 2
+  }
+
+  for(int row = 0; row < n_row; row++){
+    for(int j = Ap[row]; j < Ap[row+1]; j++) {
+      if(Aj[j]>row){
+        int iDiag=Bpi[Aj[j]];
+        int nElemTillDiag=Bp[iDiag];
+        Bx[nElemTillDiag+offsetBx[iDiag]]=Ax[j];
+        Bi[nElemTillDiag+offsetBx[iDiag]]=Aj[j];
+
+        //printf("nElemTillDiag  offsetBx[iDiag] Aj[j] %d %d %d %d\n",nElemTillDiag, offsetBx[iDiag],iDiag,Aj[j]);
+        offsetBx[iDiag]++;
+      }
+    }
+    //0 2 1
+    for(int i = 0; i < n_row; i++){
+      Bpi[i]++;
+      if(Bpi[i]==n_row){
+        Bpi[i]=0;
+      }
+      //printf("Bpi i %d %d \n",Bpi[i],i);
+    }//1 0 2
+  }
+
+  free(Bpi);
+  free(offsetBx);*/
+}
+
+void swaps(ModelDataGPU *mGPU,
+  int *Ap0, int *Aj0, double *Ax0, int *Aj1){
+#ifndef TEST_SWAPS
   //Example configuration based in  KLU Sparse pdf
   int n_row=3;
   int n_col=n_row;
@@ -528,34 +677,48 @@ void swapCSR_CUID_BCG(ModelDataGPU *mGPU,
   int Aj[nnz]={0,0,1,0,1,2};
   double Ax[nnz]={5.,4.,2.,3.,1.,8.};
    */
-  int* Bp=(int*)malloc((n_row+1)*sizeof(int)); //Nº of values for each diagonal
-  int* Bi=(int*)malloc(n_row*n_row*sizeof(int));
-  double* Bx=(double*)malloc(nnz*sizeof(double));
-
 #else
-
   int *Ap=Ap0;
   int *Aj=Aj0;
   double *Ax=Ax0;
   int n_row=mGPU->nrows;
   int n_col=mGPU->nrows;
   int nnz=mGPU->nnz;
-  int* Bp=(int*)malloc((n_row+1)*sizeof(int));
-  int* Bi=(int*)malloc(n_row*n_row*sizeof(int));
-  double* Bx=(double*)malloc(nnz*sizeof(double));
-
 #endif
 
+#ifdef CUID
+  int* Bp=(int*)malloc((n_row+1)*sizeof(int)); //Nº of values for each diagonal
+  int* Bi=(int*)malloc(n_row*n_row*sizeof(int));
+  double* Bx=(double*)malloc(nnz*sizeof(double));
   swapCSR_CUID(n_row,n_col,Ap,Aj,Ax,Bp,Bi,Bx);
-
-  for(int i=0;i<n_row*n_row;i++)
-    Aj1[i] = Bi[i];
+  for(int i=0;i<=n_row;i++)
+    Ap[i] = Bp[i];
+  for(int i=0;i<nnz;i++)
+    Aj[i] = Bi[i];
   for(int i=0;i<nnz;i++)
     Ax[i] = Bx[i];
-
+#ifdef DEV_TEST_SWAPS
+  printf("Bp:\n");
+  for(int i=0;i<n_row+1;i++)
+    printf("%d ",Bp[i]);
+  printf("\n");
+  printf("Bi:\n");
+  for(int i=0;i<nnz;i++)
+    printf("%d ",Bi[i]);
+  printf("\n");
+  printf("Bx:\n");
+  for(int i=0;i<nnz;i++)
+    printf("%le ",Bx[i]);
+  printf("\n");
+  exit(0);
+#endif
   free(Bi);
   free(Bp);
   free(Bx);
+#elif DEV_PA
+  swapCSC_CSR_BCG(mGPU0,iA_aux,jA_aux,A_aux); //CSR to CSC to emulate CAMP, which uses CSC
+  swapsCSC_PA(mGPU0,iA_aux,jA_aux,A_aux);
+#endif
 
 }
 
@@ -661,6 +824,9 @@ void BCG() {
 #elif CSC
   printf("CSC_SHARED\n");
   swapCSC_CSR_BCG(mGPU0,iA_aux,jA_aux,A_aux);
+#elif SWAPS
+  printf("SWAPS\n");
+  swaps(mGPU0,iA_aux,jA_aux,A_aux);
 #elif CSC_LOOP_ROWS
   printf("CSC_LOOP_ROWS\n");
   swapCSC_CSR_BCG(mGPU0,iA_aux,jA_aux,A_aux);

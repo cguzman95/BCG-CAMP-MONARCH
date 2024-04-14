@@ -12,7 +12,7 @@ run(){
     ddt --connect ./test
   else
     ./test
-   fi
+  fi
 }
 
 run_nsight(){

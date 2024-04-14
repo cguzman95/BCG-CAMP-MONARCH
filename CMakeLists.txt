@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.10)
 project(MultiGPUOpenMPCAMP)
 
-add_definitions(-DCSR)
+#add_definitions(-DCSR)
+add_definitions(-DDEV_CSP)
 #add_definitions(-DPA) #development
 #add_definitions(-DCUID) #slower
 

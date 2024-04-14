@@ -17,7 +17,6 @@ __device__ void cudaDeviceSpmvCSC(double* dx, double* db, double* dA, int* djA, 
   double mult;
   extern __shared__ double sdata[];
   int i= threadIdx.x + blockDim.x*blockIdx.x;
-  unsigned int tid = threadIdx.x;
   __syncthreads();
   dx[i]=0.0;
   __syncthreads();
@@ -113,7 +112,6 @@ __device__ void cudaDeviceSpmvCSRVector(double* dx, double* db, double* dA, int*
 }
 
 #ifdef CSR_ADAPTIVE
-
 __device__ int devicenextPowerOfTwo(int v) {
   v--;
   v |= v >> 1;
@@ -171,7 +169,38 @@ __device__ void cudaDeviceSpmvCSRReduce(double* dx, double* db, int nrows, doubl
   if(threadIdx.x < residual){
   }
 }
+#endif
 
+#ifdef DEV_CSP
+__device__ void cudaDeviceSpmvCSP(double* dx, double* db, double* dA, int* djA, int* diA){
+  extern __shared__ double sdata[];
+  int i=threadIdx.x+blockDim.x*blockIdx.x;
+  __syncthreads();
+  dx[i]=0.;
+  int nnz=1118;
+  int maxDiA=64;//mirar en la cpu y pasarlo como parametro
+  __syncthreads();
+  //if(i==0) diA[threadIdx.x]=0; //debug to show the error
+  for(int j=0;j<maxDiA;j++){
+    if(j<diA[threadIdx.x]){
+      //Not working because it need a size for each iter j
+      //int lenj=djAi[j];
+      //dx[djA[threadIdx.x+lenj*j]+blockDim.x*blockIdx.x]+=
+        //db[i]*dA[(threadIdx.x+lenj*j)+nnz*blockIdx.x];
+
+      if(threadIdx.x+blockDim.x*j >= blockDim.x)
+        printf("E1 %d %d\n",threadIdx.x+blockDim.x*j,j);
+      //if(djA[threadIdx.x+blockDim.x*j] >= blockDim.x)
+        //printf("djA[threadIdx.x+blockDim.x*j] >= blockDim.x\n");
+
+     dx[djA[threadIdx.x]]+=
+        db[i]*dA[(threadIdx.x+blockDim.x*j)];
+
+    }
+    __syncthreads();
+  }
+  __syncthreads();
+}
 #endif
 
 __device__ void cudaDeviceSpmv(double* dx, double* db, double* dA, int* djA, int* diA, int n_shr_empty)
@@ -179,7 +208,9 @@ __device__ void cudaDeviceSpmv(double* dx, double* db, double* dA, int* djA, int
 #ifdef CSR
   cudaDeviceSpmvCSR(dx,db,dA,djA,diA);
 #elif CSC
-  cudaDeviceSpmvCSC(dx,db,dA,djA,diA,n_shr_empty);
+  cudaDeviceSpmvCSC(dx,db,dA,djA,diA);
+#elif DEV_CSP
+  cudaDeviceSpmvCSP(dx,db,dA,djA,diA);
 #elif CSD
   cudaDeviceSpmvCSD(dx,db,dA,djA,diA);
 #elif CBD
@@ -193,7 +224,6 @@ __device__ void cudaDeviceSpmv(double* dx, double* db, double* dA, int* djA, int
 #else
   cudaDeviceSpmvCSR(dx,db,dA,djA,diA);
 #endif
-
 }
 
 __device__ void warpReduce_2(volatile double *sdata, unsigned int tid) {

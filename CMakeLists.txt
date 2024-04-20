@@ -1,14 +1,21 @@
 cmake_minimum_required(VERSION 3.10)
 project(MultiGPUOpenMPCAMP)
 
-#add_definitions(-DCSR)
-add_definitions(-DDEV_CSP)
+add_definitions(-DCSR)
+#add_definitions(-DDEV_CSP)
 #add_definitions(-DPA) #development
 #add_definitions(-DCUID) #slower
 
+#find_package(MPI)
+#find_path(MPI_INCLUDE_DIR mpi.h #needed for mn5
+#        PATHS
+#        /apps/ACC/OPENMPI/4.1.5/GCC/include)
+#include_directories(${MPI_INCLUDE_DIR})
+#enable_language(MPI)
+#include_directories(${MPI_INCLUDE_PATH})
 enable_language(CUDA)
 
-set(STD_CUDA_FLAGS "-g -arch=compute_70 -code=sm_70") #if debug: -g -G
+set(STD_CUDA_FLAGS "-g") #if debug: -g -G
 
 set(CAMP_CUDA_SRC libsolv.cu)
 set_source_files_properties(${CAMP_CUDA_SRC} PROPERTIES COMPILE_FLAGS

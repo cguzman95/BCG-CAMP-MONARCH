@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 cd build
-make -j 4
+make -j 4 VERBOSE=1
 
 run(){
   IS_DDT_OPEN=false

@@ -178,7 +178,8 @@ __device__ void cudaDeviceSpmvCSP(double* dx, double* db, double* dA, int* djA, 
   __syncthreads();
   dx[i]=0.;
   int nnz=1118;
-  int maxDiA=64;//mirar en la cpu y pasarlo como parametro
+  //pending: maxDia show be an array of nrows, since each row has a different size
+  int maxDiA=64;//Check in CPU and pass as parameter
   __syncthreads();
   //if(i==0) diA[threadIdx.x]=0; //debug to show the error
   for(int j=0;j<maxDiA;j++){
@@ -188,8 +189,8 @@ __device__ void cudaDeviceSpmvCSP(double* dx, double* db, double* dA, int* djA, 
       //dx[djA[threadIdx.x+lenj*j]+blockDim.x*blockIdx.x]+=
         //db[i]*dA[(threadIdx.x+lenj*j)+nnz*blockIdx.x];
 
-      if(threadIdx.x+blockDim.x*j >= blockDim.x)
-        printf("E1 %d %d\n",threadIdx.x+blockDim.x*j,j);
+      //if(threadIdx.x+blockDim.x*j >= blockDim.x)
+        //printf("E1 %d %d\n",threadIdx.x+blockDim.x*j,j);
       //if(djA[threadIdx.x+blockDim.x*j] >= blockDim.x)
         //printf("djA[threadIdx.x+blockDim.x*j] >= blockDim.x\n");
 

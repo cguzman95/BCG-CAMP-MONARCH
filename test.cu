@@ -5,6 +5,7 @@
 #include <cuda_runtime.h>
 #include <math.h>
 #include "libsolv.h"
+#include <mpi.h>
 
 int compare_doubles(double* x, double* y, int len, const char* s) {
 

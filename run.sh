@@ -19,10 +19,5 @@ run_nsight(){
   /apps/NVIDIA-HPC-SDK/20.9/Linux_ppc64le/2020/profilers/Nsight_Compute/ncu --set full -f -o ../profile ./test
 }
 
-run_nvprof(){
-nvprof --analysis-metrics -f -o ../profile.nvprof ./test
-}
-
 run
 #run_nsight
-#run_nvprof

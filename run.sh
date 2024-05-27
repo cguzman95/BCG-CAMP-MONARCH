@@ -15,9 +15,15 @@ run(){
   fi
 }
 
-run_nsight(){
+run_ncu(){
   /apps/ACC/NVIDIA-HPC-SDK/24.3/Linux_x86_64/2024/profilers/Nsight_Compute/ncu --set full -f -o ../profile ./test
 }
 
-run
-#run_nsight
+run_nsys(){
+  /apps/ACC/NVIDIA-HPC-SDK/23.11/Linux_x86_64/2023/profilers/Nsight_Systems/bin/nsys profile -f true -o ../profile ./test
+}
+
+
+#run
+#run_ncu
+run_nsys

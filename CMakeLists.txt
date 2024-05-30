@@ -9,7 +9,7 @@ add_definitions(-DCSR)
 find_package(MPI)
 enable_language(CUDA)
 
-set(STD_CUDA_FLAGS "-g -O3") #if debug: -g -G
+set(STD_CUDA_FLAGS "-g -O3 --default-stream per-thread") #if debug: -g -G
 
 set(CAMP_CUDA_SRC libsolv.cu)
 set_source_files_properties(${CAMP_CUDA_SRC} PROPERTIES COMPILE_FLAGS

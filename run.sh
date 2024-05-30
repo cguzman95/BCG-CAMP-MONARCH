@@ -24,6 +24,6 @@ run_nsys(){
 }
 
 
-#run
+run
 #run_ncu
-run_nsys
+#run_nsys

@@ -17,12 +17,12 @@ run(){
 
 run_ncu(){
   #profile must run in allocated node
-  /apps/ACC/NVIDIA-HPC-SDK/24.3/Linux_x86_64/2024/profilers/Nsight_Compute/ncu --target-processes=application-only --set full -f -o ../profile ./test
+  /apps/ACC/NVIDIA-HPC-SDK/23.9/Linux_x86_64/23.9/profilers/Nsight_Compute/ncu --target-processes=application-only --set full -f -o ../profile ./test
 }
 
 run_nsys(){
   #profile must run in allocated node
-  /apps/ACC/NVIDIA-HPC-SDK/23.11/Linux_x86_64/2023/profilers/Nsight_Systems/bin/nsys profile -f true -o ../profile ./test
+  /apps/ACC/NVIDIA-HPC-SDK/23.9/Linux_x86_64/23.9/profilers/Nsight_Systems/bin/nsys profile -f true -o ../profile ./test
 }
 
 

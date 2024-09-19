@@ -1,3 +1,6 @@
+build/
+profile.ncu-rep
+
 ## Core latex/pdflatex auxiliary files:
 *.aux
 *.lof

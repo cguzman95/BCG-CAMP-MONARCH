@@ -833,6 +833,8 @@ void BCG() {
 
 int main(int argc, char** argv)
 {
+  MPI_Init(&argc, &argv);
   BCG();
+  MPI_Finalize();
   return 0;
 }

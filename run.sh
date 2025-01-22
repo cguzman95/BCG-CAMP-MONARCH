@@ -2,6 +2,8 @@
 set -e
 cd build
 make -j 4 VERBOSE=1
+#Disable warning
+unset I_MPI_PMI_LIBRARY
 
 run(){
   exec_str=""
@@ -13,14 +15,14 @@ run(){
     echo "OPEN"
     exec_str="ddt --connect "
   fi
-  exec_str="${exec_str} mpirun -np 10 ./main"
+  exec_str="${exec_str} mpirun -np 1 ./main"
   echo $exec_str
   $exec_str
 }
 
 run_ncu(){
   #profile must run in allocated node
-  /apps/ACC/NVIDIA-HPC-SDK/23.9/Linux_x86_64/23.9/profilers/Nsight_Compute/ncu --target-processes=application-only --set full -f -o ../profile ./main
+  /apps/ACC/NVIDIA-HPC-SDK/23.9/Linux_x86_64/23.9/profilers/Nsight_Compute/ncu --target-processes application-only --set full -f -o ../profile ./main
 }
 
 run_nsys(){

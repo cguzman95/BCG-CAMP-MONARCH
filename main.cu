@@ -7,7 +7,7 @@
 #include <string.h>
 
 #include "libsolv.h"
-#include "utils/utils.h"
+// #include "utils/utils.h"
 
 int compare_doubles(double *x, double *y, int len, const char *s) {
   int flag = 1;
@@ -661,7 +661,7 @@ void BCG() {
   }
   fclose(fp);
 
-  write_MTX(mGPU0->nrows, mGPU0->nrows, mGPU0->nnz, iA_aux, jA_aux, A_aux);
+  // write_MTX(mGPU0->nrows, mGPU0->nrows, mGPU0->nnz, iA_aux, jA_aux, A_aux);
 
 #ifdef CSR
   printf("CSR\n");
@@ -855,6 +855,7 @@ void BCG() {
 }
 
 int main(int argc, char **argv) {
+  cudaSetDevice(0); // Avoid cuda-sanitizer error
   // Optional MPI
   MPI_Init(&argc, &argv);
   BCG();

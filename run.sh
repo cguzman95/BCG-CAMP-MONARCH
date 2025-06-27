@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 cd build
-make -j 4 VERBOSE=1
+make -j 8 VERBOSE=1
 #Disable warning
 unset I_MPI_PMI_LIBRARY
 
@@ -30,6 +30,12 @@ run_nsys(){
   /apps/ACC/NVIDIA-HPC-SDK/23.9/Linux_x86_64/23.9/profilers/Nsight_Systems/bin/nsys profile -f true -o ../profile ./main
 }
 
+cuda_sanitizer(){
+  #profile must run in allocated node
+mpirun -np 1 compute-sanitizer --tool memcheck ./main 2>&1 | tee a.txt
+}
+
 run
 #run_ncu
 #run_nsys
+#cuda_sanitizer
